@@ -1,0 +1,12 @@
+#!/bin/tcsh
+
+setenv HERE `dirname $0`
+
+if ($1 == "--interpretation") then
+    set AnInterpretation = "true"
+    shift
+else
+    set AnInterpretation = "false"
+endif
+
+sed -e "/^PROOF_GOES_HERE/r $1" -e "/^PROOF_GOES_HERE/d" -e "s/INTERPRETATION_BOOL/$AnInterpretation"/ $HERE/IDV.html
