@@ -1,0 +1,16 @@
+tff(fruit_type,type,fruit: $tType).
+tff(apple_decl,type,apple: fruit).
+tff(banana_decl,type,banana: fruit).
+tff(healthy_decl,type,healthy: fruit > $o).
+tff(rotten_decl,type,rotten: fruit > $o).
+
+tff(d_fruit_type,type,d_fruit: $tType).
+tff(d2fruit_decl,type, d2fruit: d_fruit > fruit ).
+tff(d_apple_decl,type,d_apple: d_fruit).
+tff(d_banana_decl,type,d_banana: d_fruit).
+
+
+
+
+( ~ rotten(d2fruit(d_apple))
+    & rotten(d2fruit(d_banana))).
