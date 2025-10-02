@@ -403,14 +403,21 @@ PROOF_GOES_HERE
               <hr />
               <ul>
                 <li>
-                  The Interactive Interpretation Viewer (IIV) was written as part of the
+                  The Interactive Derivation Viewer (IDV) <br />was written as part of the
                   <a href="https://tptp.org">TPTP World.</a>
                 </li>
-                <li> <a href="https://www.debugdaniel.com">Daniel Li </a>& <a href="https://esteban-morales.onrender.com">Esteban Morales</a> developed an interpretation viewer for Tarskian and Kripean interpretations.</li>
+                <li> Daniel Li & Esteban Morales developed a standalone IDV.</li>
+                <li>Jack McKeown finished the conversion and deployment.</li>
+                <li>Jack McKeown adapted it for viewing intepretations.</li>
+                <li>Joe Masterjohn started the conversion to a web app.</li>
+                <li>Steven Trac wrote the original IDV as a Java applet.</li>
               </ul>
             </div>
           </div>
 
+          <div id="back" class="box">
+            <a href=""><h2>Back To Home</h2></a>
+          </div>
         </div>
       </div>
 
@@ -427,493 +434,197 @@ PROOF_GOES_HERE
       <p id="proofText" style="display: none"></p>
 
       <script src="./BuildBundleWithNode/static/js/bundle.js"></script>
+      <script>
+        window.interestScalingBool = false;
 
+        function removeTooltips() {
+          // Remove all title tags beneath svg tags to remove tooltips
+          let keys = Array.from(document.querySelectorAll("g.node title")).map(
+            (x) => x.innerHTML
+          );
+          let titles = Array.from(document.querySelectorAll("svg title"));
 
-<script type="text/javascript">
+          // We might have to try again if the graph isn't loaded yet
+          if (keys.length < Object.keys(window.proof).length) {
+            setTimeout(removeTooltips, 500);
+            return;
+          }
 
+          console.log(
+            `Removing ${titles.length} titles (${keys.length} nodes + edges)`
+          );
 
-function removeTooltips() {
-  const keys   = Array.from(document.querySelectorAll("g.node title")).map(x => x.innerHTML);
-  const titles = Array.from(document.querySelectorAll("svg title"));
-  if (!window.proof || keys.length < Object.keys(window.proof).length) {
-    setTimeout(removeTooltips, 500);
-    return;
-  }
-  titles.forEach(x => x.remove());
-  const nodes = Array.from(document.querySelectorAll("g.node text"));
-  nodes.forEach((x, i) => x.setAttribute("proofKey", keys[i]));
-}
+          titles.forEach(function (x) {
+            x.remove();
+          });
 
-if (window.interpretation) {
-  const el = document.querySelector("#interestingnessOptions");
-  if (el) el.hidden = true;
-}
-
-function show_original_graph() {
-  setTimeout(function () {
-    window.proofText     = document.getElementById("proofText").innerText;
-    window.originalProof = parseProof(proofText);
-    window.proof         = JSON.parse(JSON.stringify(originalProof));
-    
-
-    console.log(document.getElementById("proofText").innerText)
-
-    assignInterestingnessToHeightAndWidth();
-    showGV(proofText);
-
-    if (window.interpretation) removeTooltips();
-
-    const settings = document.querySelector("#settings");
-    if (settings && settings.children[0]) settings.children[0].click();
-    setTimeout(() => {
-      const hdr = document.querySelector("#nodeInfoContainer > .settingsHeader");
-      if (hdr) hdr.click();
-    }, 500);
-  }, 200);
-}
-
-document.querySelector("#visualizeBtn")?.addEventListener("click", show_original_graph);
-
-function visualize() {
-  const indexEl = document.querySelector("#index");
-  const idvEl   = document.querySelector("#idv");
-  const proofEl = document.querySelector("#proofText");
-  const outEl   = document.getElementById("output");
-  if (indexEl) indexEl.style.display = "none";
-  if (idvEl)   idvEl.style.display = "flex";
-  if (proofEl && outEl) proofEl.textContent = outEl.textContent;
-}
-
-// FIXED: Now handles multiline type declarations
-const TYPE_LINE_RE = /^\s*t[hf]f\s*\([^)]*,\s*type\s*,/mi;
-
-// FIXED: Now handles multiline base type declarations with [\s\S]* for any character including newlines
-const BASE_TYPE_RE = /^\s*t[hf]f\s*\(\s*([A-Za-z0-9_]+)_type\s*,\s*type\s*,\s*([A-Za-z0-9_]+)\s*:\s*\$tType\s*\)\s*\.\s*$/mis;
-
-const SPLIT_RE = /\)\s*\.\s*(?=\()/g;
-
-// Helper function to check if a line matches a type declaration (handles multiline)
-function isTypeLine(line) {
-  // Normalize multiline input by replacing newlines with spaces for checking
-  const normalizedLine = line.replace(/\r?\n/g, ' ');
-  return TYPE_LINE_RE.test(normalizedLine);
-}
-
-function inferName(lines) {
-  for (const line of lines) {
-    // Handle multiline by normalizing before matching
-    const normalizedLine = line.replace(/\r?\n/g, ' ');
-    const m = normalizedLine.match(BASE_TYPE_RE);
-    if (m) return m[2];
-  }
-  return "model";
-}
-
-function normalizeClause(text) {
-  let t = text.trim();
-  t = t.replace(/\.\s*$/u, "");
-  if (t.startsWith("(") && t.endsWith(")")) return t;
-  return `( ${t} )`;
-}
-
-function world_to_IIV_format(rawText) {
-  const lines = rawText.split(/\r?\n/);
-  
-  // FIXED: Handle multiline type declarations
-  const typeLines = [];
-  const freeLines = [];
-  
-  let currentBlock = "";
-  let inTypeDecl = false;
-  
-  for (const line of lines) {
-    // Check if this line starts a type declaration
-    if (/^\s*t[hf]f\s*\(/i.test(line) && /type/i.test(line)) {
-      inTypeDecl = true;
-      currentBlock = line;
-    } else if (inTypeDecl) {
-      currentBlock += "\n" + line;
-      // Check if we've completed the declaration (ends with ).)
-      if (/\)\s*\.\s*$/.test(line)) {
-        if (isTypeLine(currentBlock)) {
-          typeLines.push(currentBlock);
-        } else {
-          freeLines.push(currentBlock);
+          // Since titles have been removed and SVG texts
+          // no longer link back to the global proof object,
+          // we need to somehow have that data available on hover.
+          let nodes = Array.from(document.querySelectorAll("g.node text"));
+          nodes.forEach(function (x, i) {
+            x.setAttribute("proofKey", keys[i]);
+          });
         }
-        currentBlock = "";
-        inTypeDecl = false;
-      }
-    } else {
-      freeLines.push(line);
-    }
-  }
-  
-  // Handle any incomplete block
-  if (currentBlock) {
-    if (isTypeLine(currentBlock)) {
-      typeLines.push(currentBlock);
-    } else {
-      freeLines.push(currentBlock);
-    }
-  }
-  
-  const freeText = freeLines.join("\n").trim();
 
-  // FIXED: Check for interpretation with multiline support
-  if (/\bt[hf]f\s*\(\s*[^,]+,\s*interpretation\s*,/mis.test(freeText)) {
-    return rawText;
-  }
-
-  let blocks = [];
-  const chunks = freeText.split(/\r?\n\s*\r?\n/).filter(c => c.trim());
-  if (chunks.length > 1) {
-    for (const ch of chunks) blocks.push(...ch.split(SPLIT_RE).filter(b => b.trim()));
-  } else if (freeText) {
-    blocks = freeText.split(SPLIT_RE).filter(b => b.trim());
-  }
-  if (!blocks.length && freeText) blocks = [freeText];
-
-  if (blocks.length === 1) {
-    const topLevel = splitTopLevelClauses(blocks[0]);
-    if (topLevel.length > 1) blocks = topLevel;
-  }
-
-  const clauses = blocks.length ? blocks.map(normalizeClause) : [];
-  const name = inferName(typeLines);
-
-  const joined = clauses.length ? clauses.join("\n  & ") : "";
-  const interp = joined ? `tff(${name},interpretation,\n  ( ${joined} ) ).` : "";
-
-  const body = typeLines.join("\n").replace(/\s+$/u, "");
-  return interp ? `${body}\n\n${interp}\n` : `${body}\n`;
-}
-
-function splitTopLevelClauses(s) {
-  const parts = [];
-  let buf = "";
-  let depth = 0;
-
-  for (let i = 0; i < s.length; i++) {
-    const ch = s[i];
-    buf += ch;
-
-    if (ch === "(") depth++;
-    else if (ch === ")") depth = Math.max(0, depth - 1);
-
-    if (depth === 0 && ch === ")") {
-      let j = i + 1;
-      while (j < s.length && /\s/.test(s[j])) j++;
-      if (s[j] === "(") {
-        parts.push(buf.trim());
-        buf = "";
-        i = j - 1;
-      }
-    }
-  }
-
-  if (buf.trim()) parts.push(buf.trim());
-  return parts;
-}
-
-function parseDeclarations(rawInput) {
-  const lines = rawInput.split(/\r?\n/);
-  const out = [];
-  let started = false;
-  let currentDecl = "";
-  let inDecl = false;
-
-  for (let i = 0; i < lines.length; i++) {
-    const ln = lines[i];
-    
-    // Check if this line starts a declaration
-    if (/^\s*t[hf]f\s*\(/i.test(ln)) {
-      // Might be starting a declaration
-      currentDecl = ln;
-      inDecl = true;
-      
-      // Check if it's complete on this line
-      if (/\)\s*\.\s*$/.test(ln)) {
-        if (isTypeLine(currentDecl)) {
-          started = true;
-          out.push(currentDecl);
+        if (window.interpretation){
+          document.querySelector("#interestingnessOptions").hidden = true;
         }
-        currentDecl = "";
-        inDecl = false;
-      }
-    } else if (inDecl) {
-      // Continue building the current declaration
-      currentDecl += "\n" + ln;
-      
-      // Check if we've completed it
-      if (/\)\s*\.\s*$/.test(ln)) {
-        if (isTypeLine(currentDecl)) {
-          started = true;
-          out.push(currentDecl);
+
+        function show_original_graph() {
+          setTimeout(function () {
+            window.proofText = document.getElementById("proofText").innerText;
+            window.originalProof = parseProof(proofText);
+            window.proof = JSON.parse(JSON.stringify(originalProof));
+
+            assignInterestingnessToHeightAndWidth();
+            // showGV(proofToGV(proof));
+            showGV(proofText);
+            if (window.interpretation) {
+            	removeTooltips();
+            }
+            // Weird Hacks for initializing gui
+            document.querySelector("#settings").children[0].click();
+            setTimeout(
+              () =>
+                document
+                  .querySelector("#nodeInfoContainer > .settingsHeader")
+                  .click(),
+              500
+            );
+          }, 200);
         }
-        currentDecl = "";
-        inDecl = false;
+
+        document
+          .querySelector("#visualizeBtn")
+          .addEventListener("click", show_original_graph);
+        // if (window.addEventListener)
+        // window.addEventListener("load", show_original_graph, false);
+        // else if (window.attachEvent)
+        // window.attachEvent("onload", show_original_graph);
+      </script>
+    </div>
+    <script type="text/javascript">
+      function visualize() {
+        document.querySelector("#index").style.display = "none";
+        document.querySelector("#idv").style.display = "flex";
+        document.querySelector("#proofText").innerHTML = document.getElementById("output").innerHTML;
       }
-    } else if (!started) {
-      // Haven't hit any declarations yet
-      if (ln.trim() === "") {
-        out.push(ln);
-      }
-    } else if (started && ln.trim() === "") {
-      // Blank lines between declarations
-      out.push(ln);
-    } else if (started && ln.trim() !== "") {
-      // Non-declaration after declarations started - stop
-      break;
-    }
-  }
+      if (document.getElementById("output").textContent.trim().includes("PROOF_GOES_HERE")) {
+        document.getElementById("fileUploadBtn").style.display = "block";
+        document.getElementById("visualizeBtn").style.display = "block";
+        document.getElementById("fileUploadBtn").addEventListener("change", function () {
+          let fr = new FileReader();
+          fr.onload = function () {
 
-  return out.join("\n");
-}
+            var output = fr.result
 
-function parseInWorldBlocks(text) {
-  const worldSet = new Set();
-  
-  // FIXED: Handle multiline world declarations
-  const worldDeclRe = /t[hf]f\s*\([^,]+,\s*type\s*,\s*([A-Za-z_]\w*)\s*:\s*\$world\s*\)\s*\./gims;
-  let m;
-  while ((m = worldDeclRe.exec(text)) !== null) {
-    worldSet.add(m[1]);
-  }
-  const worlds = Array.from(worldSet);
+            worlds = output.split("\n").filter(line => (line.includes("$world") && line.includes("tff"))).map(world => world.split(":")[0].split(",").at(-1))
+            // worlds -> [w1, w2]
 
-  const dict = {};
-  for (const w of worlds) dict[w] = "";
+            let worldDict = Object.fromEntries(worlds.map(w => [w, []]));
+            // worldDict -> {w1: [], w2: []}
 
-  const target = "$in_world(";
-  let idx = text.indexOf(target);
+            local_world = worlds.find(w => output.includes(`$local_world = ${w}`))
+            // local_world -> w1
 
-  while (idx !== -1) {
-    const startArg = idx + target.length;
+            const regex = /\$accessible_world\((\w+),(\w+)\)/g;
+            let match;
 
-    let i = startArg;
-    while (i < text.length && /\s/.test(text[i])) i++;
-    let argStart = i;
+            while ((match = regex.exec(fr.result)) !== null) {
+              const from = match[1];
+              const to = match[2];
+              if (worldDict[from]) {
+                worldDict[from].push(to);
+              } else {
+                worldDict[from] = [to];
+              }
+            }
+            // worldDict -> {w1: [w2], w2: [w1, w2]}
 
-    while (i < text.length && /[A-Za-z0-9_]/.test(text[i])) i++;
-    const firstArg = text.slice(argStart, i);
+            function parseInWorldBlocks(text) {
+              const dict = {};
+              const target = "$in_world(";
+              let idx = text.indexOf(target);
 
-    while (i < text.length && /\s/.test(text[i])) i++;
-    if (text[i] !== ",") {
-      idx = text.indexOf(target, idx + 1);
-      continue;
-    }
-    const commaIdx = i;
+              while (idx !== -1) {
+                // Move past "$in_world("
+                let startKey = idx + target.length;
 
-    let depth = 1;
-    i = commaIdx + 1;
-    while (i < text.length && depth > 0) {
-      const ch = text[i];
-      if (ch === "(") depth++;
-      else if (ch === ")") depth--;
-      i++;
-    }
-    const value = text.slice(commaIdx + 1, i - 1).trim();
+                // Read the key (up to the first comma)
+                let commaIdx = text.indexOf(",", startKey);
+                const key = text.slice(startKey, commaIdx).trim();
 
-    if (worldSet.has(firstArg)) {
-      dict[firstArg] = (dict[firstArg] ? dict[firstArg] + "\n" : "") + value;
-    } else {
-      const lookback = text.slice(Math.max(0, idx - 400), idx);
-      // FIXED: Handle multiline quantifier declarations
-      const qRe = /!\s*\[\s*([A-Za-z_]\w*)\s*:\s*\$world\s*\]\s*:/s;
-      const qm = qRe.exec(lookback);
-      const boundVar = qm ? qm[1] : null;
+                // Now scan for matching parenthesis
+                let depth = 1;
+                let i = commaIdx + 1;
+                while (i < text.length && depth > 0) {
+                  if (text[i] === "(") depth++;
+                  else if (text[i] === ")") depth--;
+                  i++;
+                }
 
-      if (boundVar && boundVar === firstArg && worlds.length) {
-        for (const w of worlds) {
-          dict[w] = (dict[w] ? dict[w] + "\n" : "") + value;
-        }
+                // Extract inside content
+                const value = text.slice(commaIdx + 1, i - 1).trim();
+
+                // Append to dictionary (separated by newlines if duplicate key)
+                if (dict[key]) {
+                  dict[key] += "\n" + value;
+                } else {
+                  dict[key] = value;
+                }
+
+                // Find next $in_world(
+                idx = text.indexOf(target, i);
+              }
+
+              return dict;
+            }
+
+            // Example usage
+            const result = parseInWorldBlocks(fr.result);
+            console.log(result);
+
+            function worldDictToGraphviz(worldDict) {
+              let lines = [];
+              lines.push("digraph G {");
+              lines.push("    rankdir=TB;   // Top to bottom layout");
+              lines.push("");
+
+              // Nodes
+              lines.push("    // Nodes");
+              for (const node of Object.keys(worldDict)) {
+                lines.push(`    ${node} [shape=circle];`);
+              }
+              lines.push("");
+
+              // Edges
+              lines.push("    // Edges");
+              for (const [from, tos] of Object.entries(worldDict)) {
+                for (const to of tos) {
+                  if (from === to) {
+                    lines.push(`    ${from} -> ${to};  // self-loop`);
+                  } else {
+                    lines.push(`    ${from} -> ${to};`);
+                  }
+                }
+              }
+
+              lines.push("}");
+              return lines.join("\n");
+            }
+
+            console.log(worldDictToGraphviz(worldDict));
+
+            document.getElementById("output").textContent = worldDictToGraphviz(worldDict);
+          };
+          fr.readAsBinaryString(this.files[0]);
+        });
       } else {
-        dict.__unresolved = (dict.__unresolved ? dict.__unresolved + "\n" : "") + value;
+        visualize();
+        show_original_graph();
       }
-    }
-
-    idx = text.indexOf(target, i);
-  }
-
-  return dict;
-}
-
-function parseAccessibleWorlds(text) {
-  const worldDict = {};
-  // FIXED: Handle multiline accessible world declarations
-  const re = /\$accessible_world\s*\(\s*(\w+)\s*,\s*(\w+)\s*\)/gs;
-  let m;
-  while ((m = re.exec(text)) !== null) {
-    const from = m[1], to = m[2];
-    if (!worldDict[from]) worldDict[from] = [];
-    worldDict[from].push(to);
-  }
-  return worldDict;
-}
-
-function parseDeclaredWorlds(text) {
-  const worlds = [];
-  // FIXED: Handle multiline world declarations properly
-  const lines = text.split(/\r?\n/);
-  let currentBlock = "";
-  
-  for (const line of lines) {
-    currentBlock += line + "\n";
-    
-    // Check if we have a complete declaration
-    if (/\)\s*\.\s*$/.test(line)) {
-      // Check if this block contains a world declaration
-      if (/\$world/i.test(currentBlock) && /t[hf]f/i.test(currentBlock)) {
-        // Extract the world name
-        const match = currentBlock.match(/t[hf]f\s*\([^,]+,\s*type\s*,\s*([A-Za-z_]\w*)\s*:\s*\$world/is);
-        if (match) {
-          worlds.push(match[1].trim());
-        }
-      }
-      currentBlock = "";
-    }
-  }
-  
-  return worlds;
-}
-
-function worldDictToGraphviz(worldAdj) {
-  const lines = [];
-  lines.push("digraph G {");
-  lines.push("  rankdir=TB;");
-  lines.push("");
-  lines.push("  // Nodes");
-  for (const node of Object.keys(worldAdj)) {
-    lines.push(`  ${node} [shape=circle, id="${node}", label="${node}", tooltip="${node}"];`);
-  }
-  lines.push("");
-  lines.push("  // Edges");
-  for (const [from, tos] of Object.entries(worldAdj)) {
-    for (const to of tos) lines.push(`  ${from} -> ${to};`);
-  }
-  lines.push("}");
-  return lines.join("\n");
-}
-
-function openIIVInNewTab_viaForm(convertedText) {
-  const form = document.createElement("form");
-  form.method = "POST";
-  form.action = "https://tptp.org/cgi-bin/SystemOnTPTPFormReply";
-  form.target = "_blank";
-  const add = (name, value) => {
-    const input = document.createElement("input");
-    input.type = "hidden";
-    input.name = name;
-    input.value = value;
-    form.appendChild(input);
-  };
-  console.log(`this is the converted text being sent to TSTP\n${convertedText}`)
-  add("ProblemSource", "FORMULAE");
-  add("FORMULAEProblem", convertedText);
-  add("SolutionFormat", "TPTP");
-  add("QuietFlag", "-q01");
-  add("SubmitButton", "ProcessSolution");
-
-  add("System___IIV---0.0", "IIV---0.0");
-  add("TimeLimit___IIV---0.0", "60");
-  add("Transform___IIV---0.0", "none");
-  add("Format___IIV---0.0", "tptp:raw");
-  add("Command___IIV---0.0", "run_IIV %s");
-
-  document.body.appendChild(form);
-  form.submit();
-  form.remove();
-}
-
-function getSvgContainer() {
-  return document.querySelector("#graph, .graph, .graph-container, svg") || document.querySelector("svg");
-}
-
-function waitForSvgNodes(callback, tries = 40) {
-  const svg = getSvgContainer();
-  if (!svg) { if (tries) return setTimeout(() => waitForSvgNodes(callback, tries - 1), 100); return; }
-  const hasNodes = svg.querySelectorAll("g.node").length > 0;
-  if (!hasNodes) { if (tries) return setTimeout(() => waitForSvgNodes(callback, tries - 1), 100); return; }
-  callback(svg);
-}
-
-function wireDelegatedClicks(inWorldMap) {
-  const svg = getSvgContainer();
-  if (!svg){console.log("failed to get svg,"); return;}
-
-  if (svg.__worldClickBound) return;
-  svg.__worldClickBound = true;
-
-  svg.addEventListener("click", (e) => {
-    const g = e.target.closest && e.target.closest("g.node");
-    if (!g) return;
-
-    const key = g.getAttribute("id")
-             || g.querySelector("title")?.textContent?.trim()
-             || g.querySelector("text")?.textContent?.trim();
-
-    if (!key) return;
-
-    const rawWorld = inWorldMap[key] || "";
-    const converted = `${window.__worldDeclarations} ` + world_to_IIV_format(rawWorld)
-    
-    openIIVInNewTab_viaForm(converted);
-  }, false);
-}
-
-(function init(){
-  const fileInput = document.getElementById("fileUploadBtn");
-  const outPre = document.getElementById("output");
-  const visualizeBtn = document.getElementById("visualizeBtn");
-
-  if (visualizeBtn) visualizeBtn.style.display = "block";
-  fileInput.style.display = "block";
-
-  fileInput.addEventListener("change", function(){
-    const file = this.files && this.files[0];
-    if (!file) return;
-    
-    const fr = new FileReader();
-    fr.onload = () => {
-      const inputText = String(fr.result);
-      console.log(`${inputText}`);
-
-      const inWorldMap = parseInWorldBlocks(inputText);
-      window.__inWorldMap = inWorldMap;
-      window.__worldDictsFromInput = parseInWorldBlocks(inputText);
-      window.__worldDeclarations = parseDeclarations(inputText);
-
-      console.log("world 2 is :")
-      console.log(window.__worldDictsFromInput["w2"]);
-
-      console.log("world 1 is ");
-      console.log(window.__worldDictsFromInput["w1"]);
-
-      console.log("declarations are ");
-      console.log(window.__worldDeclarations);
-
-      let worldAdj = parseAccessibleWorlds(inputText);
-      if (Object.keys(worldAdj).length === 0) {
-        const declared = parseDeclaredWorlds(inputText);
-        worldAdj = Object.fromEntries(declared.map(w => [w, []]));
-      }
-
-      const dot = worldDictToGraphviz(worldAdj);
-      outPre.textContent = dot;
-
-      showGV(dot);
-
-      waitForSvgNodes(() => wireDelegatedClicks(window.__inWorldMap));
-    };
-    fr.readAsText(file, "utf-8");
-  });
-
-  if (!document.getElementById("output").textContent.trim().includes("PROOF_GOES_HERE")) {
-    visualize();
-    show_original_graph();
-  }
-})();
-
-</script>
+      // document.querySelector("#settings").remove()
+    </script>
   </body>
 </html>
