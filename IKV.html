@@ -1,0 +1,1131 @@
+<html>
+  <body>
+    <script
+      src="https://unpkg.com/@hpcc-js/wasm@1.20.1/dist/index.js"
+      type="text/javascript"
+    ></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://unpkg.com/d3-graphviz@4.4.0/build/d3-graphviz.min.js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+    <script>
+      document.body.onload = function() {
+        window.stuff = document.querySelectorAll("body > pre");
+        window.stuff[0].innerText = "";
+        window.stuff[1].innerText = "";
+      };
+    </script>
+    <script>
+      window.interpretation = true;
+    </script>
+
+    <style>
+      html,
+      body {
+        font: 14px "Lucida Grande", Helvetica, Arial, sans-serif;
+        padding: 0px;
+        width: 100%;
+        height: 100%;
+      }
+
+      * {
+        /* word-break: break-all; */
+      }
+
+      body {
+        justify-content: space-around;
+        align-items: flex-start;
+      }
+
+      /* loading symbol stuff */
+
+      #loadingSymbol,
+      g.node,
+      g.node > polygon,
+      g.node > ellipse {
+        transition: opacity 0.3s, fill 0.3s;
+      }
+
+      #loadingSymbol {
+        position: fixed;
+        padding: 45px;
+        right: 20px;
+        top: 20px;
+        background-color: rgba(150, 150, 150, 0.2);
+        border-radius: 100px;
+        box-shadow: 2px 2px 5px 0px rgb(177, 177, 177);
+        opacity: 1;
+      }
+
+      #loadingSymbol.hidden {
+        opacity: 0;
+        height: 0px;
+        width: 0px;
+        padding: 0px;
+        margin: 0px;
+      }
+
+      /* settings stuff */
+
+      .interestHidden {
+        display: none;
+      }
+
+      .settingsHeader {
+        cursor: pointer;
+      }
+
+      .triangle {
+        border: solid black;
+        border-width: 0 3px 3px 0;
+        display: inline-block;
+        padding: 3px;
+
+        transform: rotate(45deg) translateY(-4px);
+      }
+
+      .open > .triangle {
+        transform: rotate(-135deg) translate(-3px, 3px);
+      }
+
+      .collapsable {
+        overflow: auto;
+        padding: 0px;
+      }
+
+      .box {
+        border: 1px solid black;
+        background: rgba(100, 100, 100, 0.4);
+        padding: 10px;
+        margin: 5px;
+      }
+
+      #nodeInfo {
+        overflow: auto;
+        font-family: monospace;
+      }
+
+      #settings {
+        /* position: fixed; */
+        left: 5px;
+        max-height: 96%;
+        width: 550px;
+        top: 2%;
+        user-select: none;
+        overflow: auto;
+        border-right: 1px solid black;
+
+        font-size: 0.87em;
+      }
+
+      #tptpTextarea {
+        display: none;
+        width: 90%;
+        margin: auto;
+        border: 0px;
+        min-height: 100px;
+        height: 0px;
+      }
+
+      #tptpTextarea.open {
+        height: auto;
+        display: block;
+      }
+
+      button,
+      input[type="button"] {
+        position: relative;
+        display: block;
+        margin-top: 10px;
+
+        padding: 10px;
+        border-radius: 5px;
+        border: 1px solid black;
+        background-color: rgb(201, 201, 201);
+        cursor: pointer;
+
+        font-size: 0.9em;
+      }
+
+      button:hover,
+      input[type="button"]:hover {
+        top: -1px;
+        left: -1px;
+        box-shadow: 1px 1px 7px -3px black;
+      }
+
+      .settingsHeader {
+        line-height: 2.5;
+        margin: 0px;
+        padding: 0px;
+      }
+
+      /* graphviz */
+
+      #graph svg {
+        width: 100%;
+        height: 100%;
+      }
+
+      /* generated slider css */
+
+      input[type="range"].mySlider {
+        -webkit-appearance: none;
+        width: 90%;
+        margin: auto;
+      }
+      input[type="range"].mySlider:focus {
+        outline: none;
+      }
+      input[type="range"].mySlider::-webkit-slider-runnable-track {
+        width: 100%;
+        height: 17.8px;
+        cursor: pointer;
+        box-shadow: 0.3px 0.3px 6px rgba(0, 0, 99, 0.58),
+          0px 0px 0.3px rgba(0, 0, 125, 0.58);
+        background: rgba(192, 192, 190, 0.76);
+        border-radius: 0px;
+        border: 1.2px solid rgba(0, 0, 0, 0);
+      }
+      input[type="range"].mySlider::-webkit-slider-thumb {
+        box-shadow: 1.7px 1.7px 9.5px rgba(0, 0, 0, 0.51),
+          0px 0px 1.7px rgba(13, 13, 13, 0.51);
+        border: 2.4px solid rgba(44, 30, 0, 0.56);
+        height: 29px;
+        width: 26px;
+        border-radius: 9px;
+        background: rgba(148, 136, 126, 0.98);
+        cursor: pointer;
+        -webkit-appearance: none;
+        margin-top: -6.8px;
+      }
+      input[type="range"].mySlider:focus::-webkit-slider-runnable-track {
+        background: rgba(192, 192, 190, 0.76);
+      }
+      input[type="range"].mySlider::-moz-range-track {
+        width: 100%;
+        height: 17.8px;
+        cursor: pointer;
+        box-shadow: 0.3px 0.3px 6px rgba(0, 0, 99, 0.58),
+          0px 0px 0.3px rgba(0, 0, 125, 0.58);
+        background: rgba(192, 192, 190, 0.76);
+        border-radius: 0px;
+        border: 1.2px solid rgba(0, 0, 0, 0);
+      }
+      input[type="range"].mySlider::-moz-range-thumb {
+        box-shadow: 1.7px 1.7px 9.5px rgba(0, 0, 0, 0.51),
+          0px 0px 1.7px rgba(13, 13, 13, 0.51);
+        border: 2.4px solid rgba(44, 30, 0, 0.56);
+        height: 29px;
+        width: 26px;
+        border-radius: 9px;
+        background: rgba(148, 136, 126, 0.98);
+        cursor: pointer;
+      }
+      input[type="range"].mySlider::-ms-track {
+        width: 100%;
+        height: 17.8px; 
+        cursor: pointer;
+        background: transparent;
+        border-color: transparent;
+        color: transparent;
+      }
+      input[type="range"].mySlider::-ms-fill-lower {
+        background: rgba(192, 192, 190, 0.76);
+        border: 1.2px solid rgba(0, 0, 0, 0);
+        border-radius: 0px;
+        box-shadow: 0.3px 0.3px 6px rgba(0, 0, 99, 0.58),
+          0px 0px 0.3px rgba(0, 0, 125, 0.58);
+      }
+      input[type="range"].mySlider::-ms-fill-upper {
+        background: rgba(192, 192, 190, 0.76);
+        border: 1.2px solid rgba(0, 0, 0, 0);
+        border-radius: 0px;
+        box-shadow: 0.3px 0.3px 6px rgba(0, 0, 99, 0.58),
+          0px 0px 0.3px rgba(0, 0, 125, 0.58);
+      }
+      input[type="range"].mySlider::-ms-thumb {
+        box-shadow: 1.7px 1.7px 9.5px rgba(0, 0, 0, 0.51),
+          0px 0px 1.7px rgba(13, 13, 13, 0.51);
+        border: 2.4px solid rgba(44, 30, 0, 0.56);
+        height: 29px;
+        width: 26px;
+        border-radius: 9px;
+        background: rgba(148, 136, 126, 0.98);
+        cursor: pointer;
+        height: 17.8px;
+      }
+      input[type="range"].mySlider:focus::-ms-fill-lower {
+        background: rgba(192, 192, 190, 0.76);
+      }
+      input[type="range"].mySlider:focus::-ms-fill-upper {
+        background: rgba(192, 192, 190, 0.76);
+      }
+
+      /**
+ * Dot Revolution
+ */
+      .dot-revolution {
+        position: relative;
+        width: 10px;
+        height: 10px;
+        border-radius: 5px;
+        background-color: #9880ff;
+        color: #9880ff;
+      }
+
+      .dot-revolution::before,
+      .dot-revolution::after {
+        content: "";
+        display: inline-block;
+        position: absolute;
+      }
+
+      .dot-revolution::before {
+        left: 0;
+        top: -15px;
+        width: 10px;
+        height: 10px;
+        border-radius: 5px;
+        background-color: #9880ff;
+        color: #9880ff;
+        transform-origin: 5px 20px;
+        animation: dotRevolution 1.4s linear infinite;
+      }
+
+      .dot-revolution::after {
+        left: 0;
+        top: -30px;
+        width: 10px;
+        height: 10px;
+        border-radius: 5px;
+        background-color: #9880ff;
+        color: #9880ff;
+        transform-origin: 5px 35px;
+        animation: dotRevolution 1s linear infinite;
+      }
+
+      @keyframes dotRevolution {
+        0% {
+          transform: rotateZ(0deg) translate3d(0, 0, 0);
+        }
+        100% {
+          transform: rotateZ(360deg) translate3d(0, 0, 0);
+        }
+      }
+
+      /*# sourceMappingURL=three-dots.css.map */
+    </style>
+    <div id="index">
+      <pre id="output" style="display: none">
+PROOF_GOES_HERE
+      </pre>
+
+      <input type="file" name="fileUploadBtn" id="fileUploadBtn" style="display:none"/>
+      <button id="visualizeBtn" onclick="visualize()" style="display:none">Visualize</button>
+    </div>
+
+    <div id="idv" style="display: none; align-items: flex-start; height: 100%">
+      <div id="loadingSymbol">
+        <div id="loadingText" style="position: relative; font-weight: bold">
+          Loading...
+        </div>
+        <div
+          class="dot-revolution"
+          style="margin-left: 50%; margin-top: 40px"
+        ></div>
+      </div>
+
+      <div id="settings" class="box">
+        <h1 class="settingsHeader" onclick="collapseBox(this)">
+          Settings/Tools <span class="triangle"></span>
+        </h1>
+        <div class="collapsable" style="height: 0px">
+          <div id="nodeInfoContainer" class="box">
+            <h2 class="settingsHeader" onclick="collapseBox(this)">
+              Node Information <span class="triangle"></span>
+            </h2>
+            <div class="collapsable" id="nodeInfo" style="height: 0px">
+              <h3><i>Hover over a node to see info about it here!</i></h3>
+            </div>
+          </div>
+          <div id="interestingnessOptions" class="box">
+            <h2 class="settingsHeader" onclick="collapseBox(this)">
+              Show/Hide Nodes <span class="triangle"></span>
+            </h2>
+            <div class="collapsable" style="height: 0px">
+              <hr />
+              <button onclick="getInterest()">
+                Compute interestingness for FOF/CNF derivations
+              </button>
+
+              <button
+                class="interestHidden"
+                id="interestScaleToggle"
+                onclick="toggleInterestScaling()"
+              >
+                Enable interestingness scaling
+              </button>
+              <hr />
+
+              <h3 class="interestHidden">Blacken boring nodes:</h3>
+              <input
+                type="range"
+                class="mySlider interestHidden"
+                name="interestingnessSlider"
+                id="interestingnessSlider"
+                oninput="recolorNodesByInterest()"
+                min="-1.1"
+                max="1.1"
+                step="0.01"
+                value="-1.1"
+              />
+              <hr class="interestHidden" />
+              <button
+                onclick="toggleConjectureVisible(this)"
+                id="hideConjNodesButton"
+              >
+                Blacken non-lemmas
+              </button>
+              <button onclick="redrawNodesByInterest()">
+                Remove black nodes
+              </button>
+              <button onclick="resetGraph()">Reset</button>
+            </div>
+          </div>
+
+          <div id="about" class="box">
+            <h2 class="settingsHeader" onclick="collapseBox(this)">
+              About<span class="triangle"></span>
+            </h2>
+            <div class="collapsable" style="height: 0px; font-size: 12pt">
+              <hr />
+              <ul>
+                <li>
+                  The Interactive Interpretation Viewer (IIV) <br />was written as part of the
+                  <a href="https://tptp.org">TPTP World.</a>
+                </li>
+                <li> <a href="https://debugdaniel.com">Daniel Li </a>& <a href="https://esteban-morales.onrender.com">Esteban Morales</a> developed a interpretation viewer for tarskian and kripean interpretations.</li>
+              </ul>
+            </div>
+          </div>
+
+          <div id="back" class="box">
+            <a href=""><h2>Back To Home</h2></a>
+          </div>
+        </div>
+      </div>
+
+      <div
+        id="graph"
+        style="
+          text-align: center;
+          width: 100%;
+          height: 100%;
+          border-left: 1px solid black;
+        "
+      ></div>
+
+      <p id="proofText" style="display: none"></p>
+
+      <script src="./BuildBundle/js/bundle.js"></script > 
+
+
+<script type="text/javascript">
+
+
+
+if (typeof Bundle !== 'undefined') {
+  console.log("holy shmokes it work ");
+
+}else{
+  console.log(typeof Bundle);
+  console.log("uh oh");
+}
+
+window.interestScalingBool = false;
+
+function removeTooltips() {
+  const keys   = Array.from(document.querySelectorAll("g.node title")).map(x => x.innerHTML);
+  const titles = Array.from(document.querySelectorAll("svg title"));
+  if (!window.proof || keys.length < Object.keys(window.proof).length) {
+    setTimeout(removeTooltips, 500);
+    return;
+  }
+  titles.forEach(x => x.remove());
+  const nodes = Array.from(document.querySelectorAll("g.node text"));
+  nodes.forEach((x, i) => x.setAttribute("proofKey", keys[i]));
+}
+
+if (window.interpretation) {
+  const el = document.querySelector("#interestingnessOptions");
+  if (el) el.hidden = true;
+}
+
+function show_original_graph() {
+  setTimeout(function () {
+
+    window.nodeMAP = getNodeMap(proofText);
+    window.proofText     = document.getElementById("proofText").innerText;
+    window.originalProof = parseProof(proofText);
+    window.proof         = JSON.parse(JSON.stringify(originalProof));
+    
+    console.log("proof text is :")
+    console.log(document.getElementById("proofText").innerText)
+//    console.log(`ENTIRE PROOF:${string(window.originalProof)}`);
+
+    assignInterestingnessToHeightAndWidth();
+    showGV(proofText);
+
+    if (window.interpretation) removeTooltips();
+
+    const settings = document.querySelector("#settings");
+    if (settings && settings.children[0]) settings.children[0].click();
+    setTimeout(() => {
+      const hdr = document.querySelector("#nodeInfoContainer > .settingsHeader");
+      if (hdr) hdr.click();
+    }, 500);
+  }, 200);
+}
+
+document.querySelector("#visualizeBtn")?.addEventListener("click", show_original_graph);
+
+function visualize() {
+  window.untouchedProof = document.querySelector('#proofText');
+  const indexEl = document.querySelector("#index");
+  const idvEl   = document.querySelector("#idv");
+  const proofEl = document.querySelector("#proofText");
+  const outEl   = document.getElementById("output");
+  window.__outEl = outEl;
+
+  if (indexEl) indexEl.style.display = "none";
+  if (idvEl)   idvEl.style.display = "flex";
+  if (proofEl && outEl) proofEl.textContent = outEl.textContent;
+}
+
+const TYPE_LINE_RE = /^\s*tff\([^)]*,\s*type\s*,/i;
+const BASE_TYPE_RE = /^\s*tff\(\s*([A-Za-z0-9_]+)_type\s*,\s*type\s*,\s*([A-Za-z0-9_]+)\s*:\s*\$tType\s*\)\.\s*$/i;
+const SPLIT_RE     = /\)\s*\.\s*(?=\()/g;
+
+function inferName(lines) {
+  for (const line of lines) {
+    const m = line.match(BASE_TYPE_RE);
+    if (m) return m[2];
+  }
+  return "model";
+}
+function normalizeClause(text) {
+  let t = text.trim();
+  t = t.replace(/\.\s*$/u, "");
+  if (t.startsWith("(") && t.endsWith(")")) return t;
+  return `( ${t} )`;
+}
+
+
+function world_to_IIV_format(rawText) 
+{
+
+  const lines     = rawText.split(/\r?\n/);
+  const typeLines = lines.filter(ln => TYPE_LINE_RE.test(ln));
+  const freeLines = lines.filter(ln => !TYPE_LINE_RE.test(ln));
+  const freeText  = freeLines.join("\n").trim();
+
+  if (/\btff\s*\(\s*[^,]+,\s*interpretation\s*,/i.test(freeText)) return rawText;
+
+  let blocks = [];
+  const chunks = freeText.split(/\r?\n\s*\r?\n/).filter(c => c.trim());
+  if (chunks.length > 1) {
+    for (const ch of chunks) blocks.push(...ch.split(SPLIT_RE).filter(b => b.trim()));
+  } else if (freeText) {
+    blocks = freeText.split(SPLIT_RE).filter(b => b.trim());
+  }
+  if (!blocks.length && freeText) blocks = [freeText];
+
+  const clauses = blocks.length ? blocks.map(normalizeClause) : [];
+  const name    = inferName(typeLines);
+
+  const joined = clauses.length ? clauses.join("\n  & ") : "";
+  const interp = joined ? `tff(${name},interpretation,\n  ( ${joined} ) ).` : "";
+
+  const body = typeLines.join("\n").replace(/\s+$/u, "");
+  return interp ? `${body}\n\n${interp}\n` : `${body}\n`;
+}
+
+/* ===================== Open IIV in new tab (form POST avoids CORS) ===================== */
+function world_to_IIV_format(rawText) {
+  const lines     = rawText.split(/\r?\n/);
+  const typeLines = lines.filter(ln => TYPE_LINE_RE.test(ln));
+  const freeLines = lines.filter(ln => !TYPE_LINE_RE.test(ln));
+  const freeText  = freeLines.join("\n").trim();
+
+  // Already in interpretation form? pass through unchanged
+  if (/\btff\s*\(\s*[^,]+,\s*interpretation\s*,/i.test(freeText)) {
+    return rawText;
+  }
+
+  // 1) primary splitting (blank lines + ").(" with a dot)
+  let blocks = [];
+  const chunks = freeText.split(/\r?\n\s*\r?\n/).filter(c => c.trim());
+  if (chunks.length > 1) {
+    for (const ch of chunks) blocks.push(...ch.split(SPLIT_RE).filter(b => b.trim()));
+  } else if (freeText) {
+    blocks = freeText.split(SPLIT_RE).filter(b => b.trim());
+  }
+  if (!blocks.length && freeText) blocks = [freeText];
+
+  // 2) fallback: split by *top-level* parenthesis boundaries like ")\n("
+  if (blocks.length === 1) {
+    const topLevel = splitTopLevelClauses(blocks[0]);
+    if (topLevel.length > 1) blocks = topLevel;
+  }
+
+  const clauses = blocks.length ? blocks.map(normalizeClause) : [];
+  const name    = inferName(typeLines);
+
+  const joined = clauses.length ? clauses.join("\n  & ") : "";
+  const interp = joined ? `tff(${name},interpretation,\n  ( ${joined} ) ).` : "";
+
+  const body = typeLines.join("\n").replace(/\s+$/u, "");
+  return interp ? `${body}\n\n${interp}\n` : `${body}\n`;
+}
+
+/**
+ * Split a string into clauses by detecting boundaries between *top-level*
+ * parenthesized groups, e.g. “… )\n( …” (no & between them).
+ * This respects balanced parentheses.
+ */
+function splitTopLevelClauses(s) {
+  const parts = [];
+  let buf = "";
+  let depth = 0;
+
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    buf += ch;
+
+    if (ch === "(") depth++;
+    else if (ch === ")") depth = Math.max(0, depth - 1);
+
+    // When we close a top-level group, see if the next non-space is '('
+    if (depth === 0 && ch === ")") {
+      let j = i + 1;
+      while (j < s.length && /\s/.test(s[j])) j++;
+      // If there's already an '&' or '.' next, it's not a boundary we insert
+      if (s[j] === "(") {
+        parts.push(buf.trim());
+        buf = "";
+        // continue from before the '(' so it gets included next loop
+        i = j - 1;
+      }
+    }
+  }
+
+  if (buf.trim()) parts.push(buf.trim());
+  return parts;
+}
+
+
+function parseDeclarations(rawInput)
+{
+  var answer = "";
+  var lines = rawInput.split(/\r?\n/);
+  var out = []
+
+ let started = false;
+
+  for (const ln of lines) {
+    if (TYPE_LINE_RE.test(ln)) {
+      started = true;
+      out.push(ln);
+      continue;
+    }
+
+    if (!started) {
+      // Haven't hit any declarations yet; allow leading blanks
+      if (ln.trim() === "") {
+        out.push(ln); // preserve leading blanks if you want; or skip by omitting this
+        continue;
+      } else {
+        // Non-blank, non-declaration before any declarations: keep scanning
+        // (If you prefer to stop, you could break here.)
+        continue;
+      }
+    }
+
+    // We have started collecting declarations.
+    if (ln.trim() === "") {
+      // Blank lines between declaration groups are okay; keep them,
+      // but only if next non-blank is also a declaration.
+      out.push(ln);
+      continue;
+    }
+
+    // First non-blank, non-declaration after we've started → stop.
+    break;
+  }
+
+  // If the captured block ends with multiple blank lines, trim to one (optional)
+  // while (out.length && out[out.length - 1].trim() === "") out.pop();
+
+  return out.join("\n");
+
+}// end of parseDeclarations
+
+
+function parseInWorldBlocks(text) {
+  // 1) Collect declared worlds from type decls: tff(w1_decl,type,w1: $world).
+  const worldSet = new Set();
+  const worldDeclRe = /^\s*tff\([^,]+,\s*type\s*,\s*([A-Za-z_]\w*)\s*:\s*\$world\s*\)\s*\.\s*$/gim;
+  let m;
+  while ((m = worldDeclRe.exec(text)) !== null) {
+    worldSet.add(m[1]);
+  }
+  const worlds = Array.from(worldSet);
+
+  const dict = {};
+  for (const w of worlds) dict[w] = "";
+
+  // 2) Scan for $in_world(…)
+  const target = "$in_world(";
+  let idx = text.indexOf(target);
+
+  while (idx !== -1) {
+    const startArg = idx + target.length;
+
+    // Parse first argument up to the comma (handles spaces)
+    let i = startArg;
+    while (i < text.length && /\s/.test(text[i])) i++;
+    let argStart = i;
+
+    // read identifier (world name or variable)
+    while (i < text.length && /[A-Za-z0-9_]/.test(text[i])) i++;
+    const firstArg = text.slice(argStart, i);
+
+    // Skip spaces until the comma that separates arg and body
+    while (i < text.length && /\s/.test(text[i])) i++;
+    if (text[i] !== ",") {
+      // malformed; advance and continue
+      idx = text.indexOf(target, idx + 1);
+      continue;
+    }
+    const commaIdx = i;
+
+    // Parse matching parens to get the body after the comma
+    let depth = 1; // we are inside $in_world( … ), so start at 1
+    i = commaIdx + 1;
+    while (i < text.length && depth > 0) {
+      const ch = text[i];
+      if (ch === "(") depth++;
+      else if (ch === ")") depth--;
+      i++;
+    }
+    // Body is between comma+1 and last ) – 1
+    const value = text.slice(commaIdx + 1, i - 1).trim();
+
+    // 3) Decide where to put it:
+    //    (a) concrete world name
+    //    (b) universally quantified variable ! [<var> : $world] : nearby
+    if (worldSet.has(firstArg)) {
+      // concrete world
+      dict[firstArg] = (dict[firstArg] ? dict[firstArg] + "\n" : "") + value;
+    } else {
+      // heuristic: look back a bit for a quantifier binding the *same* variable as $world
+      // e.g., ! [W: $world] :  ... $in_world(W, ...)
+      const lookback = text.slice(Math.max(0, idx - 400), idx);
+      const qRe = /!\s*\[\s*([A-Za-z_]\w*)\s*:\s*\$world\s*\]\s*:/;
+      const qm = qRe.exec(lookback);
+      const boundVar = qm ? qm[1] : null;
+
+      if (boundVar && boundVar === firstArg && worlds.length) {
+        for (const w of worlds) {
+          dict[w] = (dict[w] ? dict[w] + "\n" : "") + value;
+        }
+      } else {
+        // Unknown target; ignore or collect under a special key if you prefer
+       dict.__unresolved = (dict.__unresolved ? dict.__unresolved + "\n" : "") + value;
+      }
+    }
+
+    // 4) Next occurrence
+    idx = text.indexOf(target, i);
+  }
+
+  return dict;
+}
+
+
+function parseAccessibleWorlds(text) {
+  const worldDict = {};
+  const re = /\$accessible_world\((\w+),\s*(\w+)\)/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const from = m[1], to = m[2];
+    if (!worldDict[from]) worldDict[from] = [];
+    worldDict[from].push(to);
+  }
+  return worldDict;
+}
+function parseDeclaredWorlds(text) {
+  return text.split("\n")
+    .filter(line => (line.includes("$world") && line.includes("tff")))
+    .map(world => {
+      const left  = world.split(":")[0];
+      const parts = left.split(",");
+      return parts[parts.length - 1].trim();
+    });
+}
+
+
+
+
+function getLocalWorld(inputText) {
+  const lines = inputText.split('\n');
+  
+  for (const line of lines) {
+    if (line.includes('$local_world')) {
+      // Find the position of '$local_world'
+      const startIdx = line.indexOf('$local_world');
+      if (startIdx === -1) continue;
+      
+      // Move past '$local_world'
+      let i = startIdx + '$local_world'.length;
+      
+      // Skip whitespace
+      while (i < line.length && (line[i] === ' ' || line[i] === '\t')) {
+        i++;
+      }
+      
+      // Expect '='
+      if (i >= line.length || line[i] !== '=') continue;
+      i++; // Move past '='
+      
+      // Skip whitespace after '='
+      while (i < line.length && (line[i] === ' ' || line[i] === '\t')) {
+        i++;
+      }
+      
+      // Extract 'world_X'
+      let worldName = '';
+      while (i < line.length && 
+             (line[i] === '_' || 
+              (line[i] >= 'a' && line[i] <= 'z') || 
+              (line[i] >= 'A' && line[i] <= 'Z') ||
+              (line[i] >= '0' && line[i] <= '9'))) {
+        worldName += line[i];
+        i++;
+      }
+      
+      // Return if we found a valid world name starting with 'world_'
+      if (worldName.startsWith('world_') || worldName.startsWith('w')) {
+        return worldName;
+      }
+    }
+  }
+  
+  return null; // Return null if not found
+}
+
+
+/* ===================== Build DOT ===================== */
+function worldDictToGraphviz(worldAdj, localWorld) {
+  const lines = [];
+  lines.push("digraph G {");
+  lines.push("  rankdir=TB;");
+  lines.push("");
+  lines.push("  // Nodes");
+  for (const node of Object.keys(worldAdj)) {
+    const isLocal = node === localWorld;
+    const style = isLocal ? `shape=circle, color=red, penwidth=4, id="${node}", label="${node}", tooltip="${node}"` : `shape=circle, penwidth=4, id="${node}", label="${node}", tooltip="${node}"`;
+    lines.push(`  ${node} [${style}];`);
+  }
+  lines.push("");
+  
+  // Force local world to top rank
+  if (localWorld) {
+    lines.push(`  { rank=min; ${localWorld}; }`);
+    lines.push("");
+  }
+  
+  lines.push("  // Edges");
+  
+  const processed = new Set();
+  
+  for (const [from, tos] of Object.entries(worldAdj)) {
+    for (const to of tos) {
+      const edgeKey = [from, to].sort().join('-');
+      
+      if (processed.has(edgeKey)) continue;
+      
+      // Check if bidirectional
+      const isBidirectional = worldAdj[to]?.includes(from);
+      
+      if (isBidirectional) {
+        lines.push(`  ${from} -> ${to} [dir=both];`);
+        processed.add(edgeKey);
+      } else {
+        lines.push(`  ${from} -> ${to};`);
+      }
+    }
+  }
+  
+  lines.push("}");
+  return lines.join("\n");
+}
+
+function openIIVInNewTab_viaForm(convertedText) {
+  const form = document.createElement("form");
+  form.method = "POST";
+  form.action = "https://tptp.org/cgi-bin/SystemOnTPTPFormReply";
+  form.target = "_blank";
+  const add = (name, value) => {
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = name;
+    input.value = value;
+    form.appendChild(input);
+  };
+  console.log(`this is the converted text being sent to TSTP\n${convertedText}`)
+  add("ProblemSource", "FORMULAE");
+  add("FORMULAEProblem", convertedText);
+  add("SolutionFormat", "TPTP");
+  add("QuietFlag", "-q01");
+  add("SubmitButton", "ProcessSolution");
+
+  add("System___IIV---0.0", "IIV---0.0");
+  add("TimeLimit___IIV---0.0", "60");
+  add("Transform___IIV---0.0", "none");
+  add("Format___IIV---0.0", "tptp:raw");
+  add("Command___IIV---0.0", "run_IIV %s");
+
+  document.body.appendChild(form);
+  form.submit();
+  form.remove();
+}
+
+
+
+function getSvgContainer() {
+  // adjust this selector to where showGV renders the SVG
+  // common patterns: '#graph', '.graph-container', or directly 'svg'
+  return document.querySelector("#graph, .graph, .graph-container, svg") || document.querySelector("svg");
+}
+
+function waitForSvgNodes(callback, tries = 40) {
+  const svg = getSvgContainer();
+  if (!svg) { if (tries) return setTimeout(() => waitForSvgNodes(callback, tries - 1), 100); return; }
+  const hasNodes = svg.querySelectorAll("g.node").length > 0;
+  if (!hasNodes) { if (tries) return setTimeout(() => waitForSvgNodes(callback, tries - 1), 100); return; }
+  callback(svg);
+}
+function wireHoverEffects(adjacencyList) {
+  const allNodes = document.querySelectorAll('g.node');
+  allNodes.forEach(node => {
+    // Use an anonymous function to pass the adjacencyList to the handler
+    node.addEventListener('mouseover', (e) => handleNodeMouseOver(e, adjacencyList));
+    node.addEventListener('mouseout', handleNodeMouseOut);
+  });
+}
+
+function handleNodeMouseOut() {
+  const allNodes = document.querySelectorAll('g.node');
+  allNodes.forEach(node => {
+    const shape = node.querySelector('polygon, ellipse');
+    if (shape) {
+      // Revert to original styles
+      shape.style.fill = ''; // Reverts to CSS or attribute value
+      shape.style.opacity = '';
+    }
+  });
+}
+
+
+function handleNodeMouseOver(e, adjacencyList) {
+const startNodeId = e.currentTarget.id;
+  if (!startNodeId) return;
+
+  const accessibleNodes = findAccessibleNodes(startNodeId, adjacencyList);
+
+  // Find the maximum distance among all accessible nodes to create a scale.
+  // We use Math.max with the spread operator (...) on the map's values.
+  const maxDistance = Math.max(0, ...accessibleNodes.values());
+
+  accessibleNodes.forEach((distance, nodeId) => {
+    // We only color the nodes that are reachable (distance > 0)
+    if (distance > 0) {
+      const nodeElement = document.getElementById(nodeId);
+      if (nodeElement) {
+        const shape = nodeElement.querySelector('polygon, ellipse');
+        if (shape) {
+          shape.style.transition = 'fill 0.3s ease, opacity 0.3s ease';
+          shape.style.fill = 'green';
+
+          // A node at distance 1 will have opacity near 1.0.
+          // A node at maxDistance will have the lowest opacity.
+          // If maxDistance is 0, we avoid division by zero.
+          const opacity = maxDistance > 0 ? 1 - ((distance - 1) / maxDistance) : 1;
+
+          // We can set a minimum opacity so nodes don't become invisible.
+          shape.style.opacity = Math.max(0.15, opacity); 
+        }
+      }
+    }
+  });
+
+}
+
+  // prooftext is a string of the entire file upload
+  function properParser(proofText){
+
+      nm = getNodeMap(proofText);  
+      return nm;
+
+
+ //   finalWords = [];
+ //   const words = proofText.split(".");
+
+ //   // for each word in words, join the word by \n's
+ //   for(const word of words)
+ //   {
+ //     completeLine = word.join("\n");
+ //     console.log("complete line is : ");
+ //     console.log(completeLine);
+ //     finalWords.push(completeLine);
+ //   }
+ // 
+ //   words = [];
+
+ //   //now we have an array of all tff terms
+
+
+
+  }// end of properParser
+
+function findAccessibleNodes(startNode, adjacencyList) {
+  const distances = new Map(); // Stores node -> distance
+  const queue = []; // Queue for BFS: [node, distance]
+
+  // Start with the initial node at distance 0
+  distances.set(startNode, 0);
+  queue.push([startNode, 0]);
+
+  while (queue.length > 0) {
+    const [currentNode, currentDist] = queue.shift();
+
+    const neighbors = adjacencyList[currentNode] || [];
+    for (const neighbor of neighbors) {
+      // If we haven't visited this neighbor yet
+      if (!distances.has(neighbor)) {
+        distances.set(neighbor, currentDist + 1);
+        queue.push([neighbor, currentDist + 1]);
+      }
+    }
+  }
+
+  return distances;
+}
+
+
+function wireDelegatedClicks(inWorldMap) {
+  const svg = getSvgContainer();
+  if (!svg){console.log("failed to get svg,"); return;}
+
+  // Avoid duplicate listeners
+  if (svg.__worldClickBound) return;
+  svg.__worldClickBound = true;
+
+  svg.addEventListener("click", (e) => {
+    // Find nearest node group
+    const g = e.target.closest && e.target.closest("g.node");
+    if (!g) return;
+
+    // Prefer id; fallback to <title> or visible text
+    const key = g.getAttribute("id")
+             || g.querySelector("title")?.textContent?.trim()
+             || g.querySelector("text")?.textContent?.trim();
+
+    if (!key) return;
+
+    const rawWorld  = inWorldMap[key] || "";
+    const converted =   `${window.__worldDeclarations} ` + world_to_IIV_format(rawWorld)
+    
+    openIIVInNewTab_viaForm(converted);
+  }, false);
+
+}// end of wireDelegatedClicks
+
+
+// start of main
+(function init(){
+  const fileInput = document.getElementById("fileUploadBtn");
+  const outPre    = document.getElementById("output");
+//  console.log(`file input is :${outPre.innerText}`);
+  const visualizeBtn = document.getElementById("visualizeBtn");
+//  if (!fileInput || !outPre) return;
+
+  if (visualizeBtn) visualizeBtn.style.display = "block";
+  fileInput.style.display = "block";
+
+  fileInput.addEventListener("change", function(){
+    const file = this.files && this.files[0];
+    if (!file) return;
+
+    const fr = new FileReader();
+    fr.onload = () => {
+      const inputText = String(fr.result);
+      console.log(`${inputText}`);
+      window.og_text = inputText;
+
+      // Parse once and stash globally for easy access
+
+      //TODO: update this map to have correct links;
+      const inWorldMap = parseInWorldBlocks(inputText);   // { w1: "...tptp...", ... }
+      window.__inWorldMap = inWorldMap;
+      window.__worldDictsFromInput = parseInWorldBlocks(inputText) // returns a dict of world tarski interpretations
+      window.__worldDeclarations = parseDeclarations(inputText)//string of declarations from input text
+
+      console.log("world 2 is :")
+      console.log(window.__worldDictsFromInput["w2"]);
+
+      console.log("world 1 is ");
+      console.log(window.__worldDictsFromInput["w1"]);
+
+      console.log("declarations are ");
+      console.log(window.__worldDeclarations);
+
+
+      let worldAdj = parseAccessibleWorlds(inputText);    // { w1: [w2,...], ... }
+      if (Object.keys(worldAdj).length === 0) {
+        const declared = parseDeclaredWorlds(inputText);
+        worldAdj = Object.fromEntries(declared.map(w => [w, []]));
+      }
+
+      localWorld = getLocalWorld(inputText);
+
+      const dot = worldDictToGraphviz(worldAdj, localWorld);
+      outPre.textContent = dot;
+
+      showGV(dot);
+
+      // Wait for render, then bind delegated clicks that use the parsed map
+      waitForSvgNodes(() => {
+        wireDelegatedClicks(window.__inWorldMap);
+        wireHoverEffects(worldAdj);
+      });
+    };
+    fr.readAsText(file, "utf-8");
+  });
+
+
+
+
+
+
+  if (!document.getElementById("output").textContent.trim().includes("PROOF_GOES_HERE")) {
+    visualize();
+    show_original_graph();
+  }
+})();
+
+
+</script>
+  </body>
+</html>
