@@ -471,9 +471,10 @@ def main():
         
         if expanded_content is None:
             print(f"Error: Could not find 'interpretation-worlds' block in {args.file}", file=sys.stderr)
+            print("% SZS status NoSuccess")
             sys.exit(1)
 
-        print(expanded_content)
+
 
         base_name = os.path.basename(args.file)
         name_without_ext, ext = os.path.splitext(base_name)
@@ -488,9 +489,12 @@ def main():
     
     except FileNotFoundError:
         print(f"Error: File '{args.file}' not found.", file=sys.stderr)
+
+        print("% SZS status NoSuccess")
         sys.exit(1)
     except Exception as e:
         print(f"Error processing file: {e}", file=sys.stderr)
+        print("% SZS status NoSuccess")
         import traceback
         traceback.print_exc()
         sys.exit(1)
