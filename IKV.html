@@ -7,6 +7,7 @@
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <script src="https://unpkg.com/d3-graphviz@4.4.0/build/d3-graphviz.min.js"></script>
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&amp;display=swap">
     <script>
       document.body.onload = function() {
         window.stuff = document.querySelectorAll("body > pre");
@@ -91,7 +92,6 @@
         overflow: auto;
         padding: 0px;
       }
-
       .box {
         border: 1px solid black;
         background: rgba(100, 100, 100, 0.4);
@@ -404,7 +404,7 @@ PROOF_GOES_HERE
                   The Interactive Interpretation Viewer (IIV) <br />was written as part of the
                   <a href="https://tptp.org">TPTP World.</a>
                 </li>
-                <li> <a href="https://debugdaniel.com">Daniel Li </a>& <a href="https://esteban-morales.onrender.com">Esteban Morales</a> developed a interpretation viewer for tarskian and kripean interpretations.</li>
+                <li> <a href="https://debugdaniel.com">Daniel Li </a>& <a href="https://esteban-morales.onrender.com">Esteban Morales</a> developed a interpretation viewer for Tarskian and Kripean interpretations.</li>
               </ul>
             </div>
           </div>
@@ -427,20 +427,12 @@ PROOF_GOES_HERE
 
       <p id="proofText" style="display: none"></p>
 
-      <script src="./BuildBundle/js/bundle.js"></script > 
+      <script src="./BuildBundle/js/bundle.js"></script >   
 
 
 <script type="text/javascript">
 
 
-
-if (typeof Bundle !== 'undefined') {
-  console.log("holy shmokes it work ");
-
-}else{
-  console.log(typeof Bundle);
-  console.log("uh oh");
-}
 
 window.interestScalingBool = false;
 
@@ -471,7 +463,6 @@ function show_original_graph() {
     
     console.log("proof text is :")
     console.log(document.getElementById("proofText").innerText)
-//    console.log(`ENTIRE PROOF:${string(window.originalProof)}`);
 
     assignInterestingnessToHeightAndWidth();
     showGV(proofText);
@@ -512,17 +503,18 @@ function inferName(lines) {
     if (m) return m[2];
   }
   return "model";
-}
+}// end of inferName
+
+
 function normalizeClause(text) {
   let t = text.trim();
   t = t.replace(/\.\s*$/u, "");
   if (t.startsWith("(") && t.endsWith(")")) return t;
   return `( ${t} )`;
-}
+}// end of normalizeClause fn
 
 
-function world_to_IIV_format(rawText) 
-{
+function world_to_IIV_format(rawText) {
 
   const lines     = rawText.split(/\r?\n/);
   const typeLines = lines.filter(ln => TYPE_LINE_RE.test(ln));
@@ -541,23 +533,25 @@ function world_to_IIV_format(rawText)
   if (!blocks.length && freeText) blocks = [freeText];
 
   const clauses = blocks.length ? blocks.map(normalizeClause) : [];
+
   const name    = inferName(typeLines);
 
   const joined = clauses.length ? clauses.join("\n  & ") : "";
   const interp = joined ? `tff(${name},interpretation,\n  ( ${joined} ) ).` : "";
 
+ 
   const body = typeLines.join("\n").replace(/\s+$/u, "");
+ 
   return interp ? `${body}\n\n${interp}\n` : `${body}\n`;
-}
+}// end of world to IIV 
 
-/* ===================== Open IIV in new tab (form POST avoids CORS) ===================== */
+
 function world_to_IIV_format(rawText) {
   const lines     = rawText.split(/\r?\n/);
   const typeLines = lines.filter(ln => TYPE_LINE_RE.test(ln));
   const freeLines = lines.filter(ln => !TYPE_LINE_RE.test(ln));
   const freeText  = freeLines.join("\n").trim();
 
-  // Already in interpretation form? pass through unchanged
   if (/\btff\s*\(\s*[^,]+,\s*interpretation\s*,/i.test(freeText)) {
     return rawText;
   }
@@ -572,7 +566,6 @@ function world_to_IIV_format(rawText) {
   }
   if (!blocks.length && freeText) blocks = [freeText];
 
-  // 2) fallback: split by *top-level* parenthesis boundaries like ")\n("
   if (blocks.length === 1) {
     const topLevel = splitTopLevelClauses(blocks[0]);
     if (topLevel.length > 1) blocks = topLevel;
@@ -605,11 +598,11 @@ function splitTopLevelClauses(s) {
     if (ch === "(") depth++;
     else if (ch === ")") depth = Math.max(0, depth - 1);
 
-    // When we close a top-level group, see if the next non-space is '('
+    // when we close a top-level group, see if the next non-space is '('
     if (depth === 0 && ch === ")") {
       let j = i + 1;
       while (j < s.length && /\s/.test(s[j])) j++;
-      // If there's already an '&' or '.' next, it's not a boundary we insert
+      // if there's already an '&' or '.' next, it's not a boundary we insert
       if (s[j] === "(") {
         parts.push(buf.trim());
         buf = "";
@@ -621,7 +614,7 @@ function splitTopLevelClauses(s) {
 
   if (buf.trim()) parts.push(buf.trim());
   return parts;
-}
+}// end of splitTopLevelClauses
 
 
 function parseDeclarations(rawInput)
@@ -640,31 +633,24 @@ function parseDeclarations(rawInput)
     }
 
     if (!started) {
-      // Haven't hit any declarations yet; allow leading blanks
       if (ln.trim() === "") {
-        out.push(ln); // preserve leading blanks if you want; or skip by omitting this
+        out.push(ln); 
         continue;
       } else {
-        // Non-blank, non-declaration before any declarations: keep scanning
-        // (If you prefer to stop, you could break here.)
+        // non-blank, non-declaration before any declarations: keep scanning
         continue;
       }
     }
 
-    // We have started collecting declarations.
+    // we have started collecting declarations.
     if (ln.trim() === "") {
-      // Blank lines between declaration groups are okay; keep them,
       // but only if next non-blank is also a declaration.
       out.push(ln);
       continue;
     }
-
-    // First non-blank, non-declaration after we've started → stop.
     break;
   }
 
-  // If the captured block ends with multiple blank lines, trim to one (optional)
-  // while (out.length && out[out.length - 1].trim() === "") out.pop();
 
   return out.join("\n");
 
@@ -672,7 +658,7 @@ function parseDeclarations(rawInput)
 
 
 function parseInWorldBlocks(text) {
-  // 1) Collect declared worlds from type decls: tff(w1_decl,type,w1: $world).
+
   const worldSet = new Set();
   const worldDeclRe = /^\s*tff\([^,]+,\s*type\s*,\s*([A-Za-z_]\w*)\s*:\s*\$world\s*\)\s*\.\s*$/gim;
   let m;
@@ -700,7 +686,7 @@ function parseInWorldBlocks(text) {
     while (i < text.length && /[A-Za-z0-9_]/.test(text[i])) i++;
     const firstArg = text.slice(argStart, i);
 
-    // Skip spaces until the comma that separates arg and body
+    // skip spaces until the comma that separates arg and body
     while (i < text.length && /\s/.test(text[i])) i++;
     if (text[i] !== ",") {
       // malformed; advance and continue
@@ -709,7 +695,7 @@ function parseInWorldBlocks(text) {
     }
     const commaIdx = i;
 
-    // Parse matching parens to get the body after the comma
+    // parse matching parens to get the body after the comma
     let depth = 1; // we are inside $in_world( … ), so start at 1
     i = commaIdx + 1;
     while (i < text.length && depth > 0) {
@@ -718,17 +704,17 @@ function parseInWorldBlocks(text) {
       else if (ch === ")") depth--;
       i++;
     }
-    // Body is between comma+1 and last ) – 1
+    // body is between comma+1 and last ) – 1
     const value = text.slice(commaIdx + 1, i - 1).trim();
 
-    // 3) Decide where to put it:
+    // 3) decide where to put it:
     //    (a) concrete world name
     //    (b) universally quantified variable ! [<var> : $world] : nearby
     if (worldSet.has(firstArg)) {
       // concrete world
       dict[firstArg] = (dict[firstArg] ? dict[firstArg] + "\n" : "") + value;
     } else {
-      // heuristic: look back a bit for a quantifier binding the *same* variable as $world
+      // heuristic: look back a bit for a quantifier binding the same variable as $world
       // e.g., ! [W: $world] :  ... $in_world(W, ...)
       const lookback = text.slice(Math.max(0, idx - 400), idx);
       const qRe = /!\s*\[\s*([A-Za-z_]\w*)\s*:\s*\$world\s*\]\s*:/;
@@ -740,17 +726,17 @@ function parseInWorldBlocks(text) {
           dict[w] = (dict[w] ? dict[w] + "\n" : "") + value;
         }
       } else {
-        // Unknown target; ignore or collect under a special key if you prefer
+        // unknown target; ignore or collect under a special key if you prefer
        dict.__unresolved = (dict.__unresolved ? dict.__unresolved + "\n" : "") + value;
       }
     }
 
-    // 4) Next occurrence
+    // 4) next occurrence
     idx = text.indexOf(target, i);
   }
 
   return dict;
-}
+}// end of parseInWorldBlocks
 
 
 function parseAccessibleWorlds(text) {
@@ -763,7 +749,11 @@ function parseAccessibleWorlds(text) {
     worldDict[from].push(to);
   }
   return worldDict;
-}
+
+}// end of parseAccessibleWorlds
+
+
+
 function parseDeclaredWorlds(text) {
   return text.split("\n")
     .filter(line => (line.includes("$world") && line.includes("tff")))
@@ -772,7 +762,7 @@ function parseDeclaredWorlds(text) {
       const parts = left.split(",");
       return parts[parts.length - 1].trim();
     });
-}
+}// end of parseDeclaredWorlds
 
 
 
@@ -786,24 +776,22 @@ function getLocalWorld(inputText) {
       const startIdx = line.indexOf('$local_world');
       if (startIdx === -1) continue;
       
-      // Move past '$local_world'
       let i = startIdx + '$local_world'.length;
-      
-      // Skip whitespace
+     
+
       while (i < line.length && (line[i] === ' ' || line[i] === '\t')) {
         i++;
       }
       
-      // Expect '='
+      // expect '='
       if (i >= line.length || line[i] !== '=') continue;
-      i++; // Move past '='
+      i++; 
       
-      // Skip whitespace after '='
       while (i < line.length && (line[i] === ' ' || line[i] === '\t')) {
         i++;
       }
-      
-      // Extract 'world_X'
+     
+
       let worldName = '';
       while (i < line.length && 
              (line[i] === '_' || 
@@ -814,36 +802,72 @@ function getLocalWorld(inputText) {
         i++;
       }
       
-      // Return if we found a valid world name starting with 'world_'
       if (worldName.startsWith('world_') || worldName.startsWith('w')) {
         return worldName;
       }
     }
   }
   
-  return null; // Return null if not found
-}
+  return null; 
+}// end of getLocalWorld
 
 
-/* ===================== Build DOT ===================== */
 function worldDictToGraphviz(worldAdj, localWorld) {
   const lines = [];
   lines.push("digraph G {");
+  lines.push('node [style=filled, fontname="JetBrains Mono", fontsize=10];');
   lines.push("  rankdir=TB;");
   lines.push("");
   lines.push("  // Nodes");
   for (const node of Object.keys(worldAdj)) {
     const isLocal = node === localWorld;
-    const style = isLocal ? `shape=circle, color=red, penwidth=4, id="${node}", label="${node}", tooltip="${node}"` : `shape=circle, penwidth=4, id="${node}", label="${node}", tooltip="${node}"`;
+    const style = isLocal ? `shape=circle, color=red,fillcolor=gray, penwidth=4, id="${node}", label="${node}", tooltip="${node}"` : `shape=circle, penwidth=4, fillcolor=gray, id="${node}", label="${node}", tooltip="${node}"`;
     lines.push(`  ${node} [${style}];`);
   }
   lines.push("");
+
+  //TODO: IF no worlds connect to one another, make sure that local world is still at the top 
+  // right now if all the worlds don't meet one anoother they are all on the same rank
   
-  // Force local world to top rank
+  // force local world to top rank of graph
   if (localWorld) {
     lines.push(`  { rank=min; ${localWorld}; }`);
     lines.push("");
+   const hasAnyEdges = Object.values(worldAdj).some(tos => tos.length > 0);
+    console.log("has any edges is: ")
+    console.log(hasAnyEdges)
+  
+  if (!hasAnyEdges) {
+    // create invisible edges from localWorld to all other nodes to establish hierarchy
+    const otherNodes = Object.keys(worldAdj).filter(node => node !== localWorld);
+    if (otherNodes.length > 0) {
+      lines.push(`  // Invisible edges to maintain hierarchy`);
+      for (const node of otherNodes) {
+        lines.push(`  ${localWorld} -> ${node} [style=invis];`);
+      }
+    }
   }
+  
+  lines.push("");
+
+  } 
+
+ /* 
+  else if (!localWorld){
+    
+    lines.push(` {rank=min; ${localWorld};`);
+      
+    var index = 1;
+    for (const node of Object.keys(worldAdj)){
+      if (node != localWorld){
+
+    lines.push(` {rank=mink; ${localWorld};`);
+      }
+    }
+
+  }
+
+  */
   
   lines.push("  // Edges");
   
@@ -855,8 +879,8 @@ function worldDictToGraphviz(worldAdj, localWorld) {
       
       if (processed.has(edgeKey)) continue;
       
-      // Check if bidirectional
-      const isBidirectional = worldAdj[to]?.includes(from);
+      // check if bidirectional
+      const isBidirectional = worldAdj[to]?.includes(from) && !(worldAdj[to] === (worldAdj[from]));
       
       if (isBidirectional) {
         lines.push(`  ${from} -> ${to} [dir=both];`);
@@ -869,7 +893,8 @@ function worldDictToGraphviz(worldAdj, localWorld) {
   
   lines.push("}");
   return lines.join("\n");
-}
+
+}// end of world dict to graph viz 
 
 function openIIVInNewTab_viaForm(convertedText) {
   const form = document.createElement("form");
@@ -905,7 +930,6 @@ function openIIVInNewTab_viaForm(convertedText) {
 
 function getSvgContainer() {
   // adjust this selector to where showGV renders the SVG
-  // common patterns: '#graph', '.graph-container', or directly 'svg'
   return document.querySelector("#graph, .graph, .graph-container, svg") || document.querySelector("svg");
 }
 
@@ -919,7 +943,8 @@ function waitForSvgNodes(callback, tries = 40) {
 function wireHoverEffects(adjacencyList) {
   const allNodes = document.querySelectorAll('g.node');
   allNodes.forEach(node => {
-    // Use an anonymous function to pass the adjacencyList to the handler
+
+    // use an anonymous function to pass the adjacencyList to the handler
     node.addEventListener('mouseover', (e) => handleNodeMouseOver(e, adjacencyList));
     node.addEventListener('mouseout', handleNodeMouseOut);
   });
@@ -930,8 +955,7 @@ function handleNodeMouseOut() {
   allNodes.forEach(node => {
     const shape = node.querySelector('polygon, ellipse');
     if (shape) {
-      // Revert to original styles
-      shape.style.fill = ''; // Reverts to CSS or attribute value
+      shape.style.fill = ''; // reverts to CSS or attribute value
       shape.style.opacity = '';
     }
   });
@@ -940,37 +964,44 @@ function handleNodeMouseOut() {
 
 function handleNodeMouseOver(e, adjacencyList) {
 const startNodeId = e.currentTarget.id;
+
+//  console.log(adjacencyList);
   if (!startNodeId) return;
 
   const accessibleNodes = findAccessibleNodes(startNodeId, adjacencyList);
 
-  // Find the maximum distance among all accessible nodes to create a scale.
-  // We use Math.max with the spread operator (...) on the map's values.
+  // we use Math.max with the spread operator (...) on the map's values.
   const maxDistance = Math.max(0, ...accessibleNodes.values());
 
   accessibleNodes.forEach((distance, nodeId) => {
     // We only color the nodes that are reachable (distance > 0)
-    if (distance > 0) {
+
       const nodeElement = document.getElementById(nodeId);
-      if (nodeElement) {
+//          console.log(nodeElement);
         const shape = nodeElement.querySelector('polygon, ellipse');
+    if ( (nodeElement && shape ) && (isAccessibilityReflexive(nodeElement.id , adjacencyList) || distance > 0) ) {
         if (shape) {
+
+          
           shape.style.transition = 'fill 0.3s ease, opacity 0.3s ease';
           shape.style.fill = 'green';
 
-          // A node at distance 1 will have opacity near 1.0.
-          // A node at maxDistance will have the lowest opacity.
-          // If maxDistance is 0, we avoid division by zero.
+          // a node at distance 1 will have opacity near 1.0.
+          // a node at maxDistance will have the lowest opacity.
+          // if maxDistance is 0, we avoid division by zero.
           const opacity = maxDistance > 0 ? 1 - ((distance - 1) / maxDistance) : 1;
 
           // We can set a minimum opacity so nodes don't become invisible.
-          shape.style.opacity = Math.max(0.15, opacity); 
+          shape.style.fillOpacity = Math.max(0.15, opacity); 
+          shape.style.strokeOpacity = 1;
         }
-      }
+      
     }
   });
 
-}
+}// end of handleNodeMouseOut
+
+
 
   // prooftext is a string of the entire file upload
   function properParser(proofText){
@@ -999,11 +1030,37 @@ const startNodeId = e.currentTarget.id;
 
   }// end of properParser
 
-function findAccessibleNodes(startNode, adjacencyList) {
-  const distances = new Map(); // Stores node -> distance
-  const queue = []; // Queue for BFS: [node, distance]
+function isAccessibilityReflexive(currNode, adjacencyList){
+//  console.log('yo im running isAccessibilityReflexive');
 
-  // Start with the initial node at distance 0
+  const currNeighbors = adjacencyList[currNode] || [];
+
+  if (currNeighbors.length == 0){
+    console.log(`currNode : ${currNode} has no neighbors`);
+    return false;
+  }
+
+//  console.log("curr neighrs not empty for curr nod");
+//  console.log(currNeighbors);
+
+
+  for (const neighbor of currNeighbors){
+//    console.log(`comparing : ${currNode} with ${neighbor}`);
+
+    if (neighbor == currNode){
+      return true;
+    }
+  }// end of for 
+
+  return false;
+}// end of isAccessibilityReflexive
+
+
+function findAccessibleNodes(startNode, adjacencyList) {
+  const distances = new Map(); 
+  const queue = []; 
+
+  // start with the initial node at distance 0
   distances.set(startNode, 0);
   queue.push([startNode, 0]);
 
@@ -1012,7 +1069,7 @@ function findAccessibleNodes(startNode, adjacencyList) {
 
     const neighbors = adjacencyList[currentNode] || [];
     for (const neighbor of neighbors) {
-      // If we haven't visited this neighbor yet
+      // if we haven't visited this neighbor yet
       if (!distances.has(neighbor)) {
         distances.set(neighbor, currentDist + 1);
         queue.push([neighbor, currentDist + 1]);
@@ -1028,16 +1085,16 @@ function wireDelegatedClicks(inWorldMap) {
   const svg = getSvgContainer();
   if (!svg){console.log("failed to get svg,"); return;}
 
-  // Avoid duplicate listeners
+  // avoid duplicate listeners
   if (svg.__worldClickBound) return;
   svg.__worldClickBound = true;
 
   svg.addEventListener("click", (e) => {
-    // Find nearest node group
+    // find nearest node group
     const g = e.target.closest && e.target.closest("g.node");
     if (!g) return;
 
-    // Prefer id; fallback to <title> or visible text
+    // prefer id; fallback to <title> or visible text
     const key = g.getAttribute("id")
              || g.querySelector("title")?.textContent?.trim()
              || g.querySelector("text")?.textContent?.trim();
@@ -1074,7 +1131,7 @@ function wireDelegatedClicks(inWorldMap) {
       console.log(`${inputText}`);
       window.og_text = inputText;
 
-      // Parse once and stash globally for easy access
+      // parse once and stash globally for easy access
 
       //TODO: update this map to have correct links;
       const inWorldMap = parseInWorldBlocks(inputText);   // { w1: "...tptp...", ... }
@@ -1082,17 +1139,22 @@ function wireDelegatedClicks(inWorldMap) {
       window.__worldDictsFromInput = parseInWorldBlocks(inputText) // returns a dict of world tarski interpretations
       window.__worldDeclarations = parseDeclarations(inputText)//string of declarations from input text
 
-      console.log("world 2 is :")
-      console.log(window.__worldDictsFromInput["w2"]);
+//      console.log("world 2 is :")
+ //     console.log(window.__worldDictsFromInput["w2"]);
 
-      console.log("world 1 is ");
-      console.log(window.__worldDictsFromInput["w1"]);
+  //    console.log("world 1 is ");
+//      console.log(window.__worldDictsFromInput["w1"]);
+Object.entries(window.__worldDictsFromInput).forEach(([key, value]) => {
+  console.log(`${key} is : ${value}`);
+});
 
       console.log("declarations are ");
       console.log(window.__worldDeclarations);
+  
 
+      // need to assert that declarations don't have a
 
-      let worldAdj = parseAccessibleWorlds(inputText);    // { w1: [w2,...], ... }
+      let worldAdj = parseAccessibleWorlds(inputText);    // fromat : { w1: [w2,...], ... }
       if (Object.keys(worldAdj).length === 0) {
         const declared = parseDeclaredWorlds(inputText);
         worldAdj = Object.fromEntries(declared.map(w => [w, []]));
@@ -1105,10 +1167,20 @@ function wireDelegatedClicks(inWorldMap) {
 
       showGV(dot);
 
-      // Wait for render, then bind delegated clicks that use the parsed map
+      // wait for render, then bind delegated clicks that use the parsed map
       waitForSvgNodes(() => {
         wireDelegatedClicks(window.__inWorldMap);
         wireHoverEffects(worldAdj);
+
+ const spinner = document.getElementById("loadingSymbol");
+
+      setTimeout( () => {
+
+        if (spinner) {
+          spinner.classList.add("hidden");}
+      }, 1000);
+
+
       });
     };
     fr.readAsText(file, "utf-8");
