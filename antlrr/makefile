@@ -31,7 +31,7 @@ else
 	@echo "ANTLR 4 tools already installed: $(ANTLR_CHECK)"
 endif
 
-## --- Generate ANTLR Files ---
-TPTP_ANTLR_FILES: antlr4
+
+TPTP_ANTLR_FILES: antlr4 TPTP.g4
 	@echo "Generating TPTP ANTLR files..."
 	antlr4 -Dlanguage=Python3 TPTP.g4 -visitor
