@@ -64,13 +64,13 @@ class TPTPModalExtractor(TPTPListener):
         vL = self.get_term_text(lhs)
         vR = self.get_term_text(rhs)
         return self.is_universally_quantified_world(ctx, vL) and self.is_universally_quantified_world(ctx, vR)
-    
+ 
     def __init__(self):
         self.declarations = []
         self.worlds = set()
         self.accessible_worlds = {}
         self.in_type_decl = False
-        
+
         self.universal_accessibility: bool = False
         self.universal_polarity: bool = True
 
@@ -78,7 +78,7 @@ class TPTPModalExtractor(TPTPListener):
         self.extra_conjuncts = []
 
         self.interpretation_worlds_name = "model_worlds"
-        
+
     def get_original_text(self, ctx):
         if ctx.start and ctx.stop:
             stream = ctx.start.getTokenSource()
@@ -92,11 +92,11 @@ class TPTPModalExtractor(TPTPListener):
     def enterTff_annotated(self, ctx):
         formula_text = self.get_original_text(ctx)
         role = ctx.formula_role().getText() if ctx.formula_role() else None
-        
+
         if role == "type":
             self.in_type_decl = True
             self.declarations.append(formula_text)
-            
+ 
             # check for world declarations
             if ctx.tff_formula() and ctx.tff_formula().tff_atom_typing():
                 typing = ctx.tff_formula().tff_atom_typing()
@@ -106,21 +106,21 @@ class TPTPModalExtractor(TPTPListener):
                         if typing.untyped_atom():
                             world_name = typing.untyped_atom().getText()
                             self.worlds.add(world_name)
-        
+
         elif role == "interpretation-worlds":
             if ctx.name():
                 self.interpretation_worlds_name = ctx.name().getText()
-                
+
             class ConjunctFinder(TPTPListener):
                 def __init__(self, extractor):
                     self.extractor = extractor
-                
+
                 def enterTff_defined_plain(self, ctx: TPTPParser.Tff_defined_plainContext):
                     if ctx.defined_functor() and ctx.defined_functor().getText().startswith("$"):
                         text = self.extractor.get_original_text(ctx)
                         if "$accessible_world" not in text and "$local_world" not in text:
                             self.extractor.extra_conjuncts.append(text)
-            
+
             if ctx.tff_formula():
                 walker = ParseTreeWalker()
                 finder = ConjunctFinder(self)
@@ -137,30 +137,30 @@ class TPTPModalExtractor(TPTPListener):
             #  tff_unitary_term is used
             lhs = ctx.tff_unitary_term(0).getText()
             rhs = ctx.tff_unitary_term(1).getText()
-            
+
             if lhs == "$local_world":
                 self.local_world = rhs
                 self.worlds.add(rhs)
             elif rhs == "$local_world":
                 self.local_world = lhs
                 self.worlds.add(lhs)
-    
+ 
     def enterTff_defined_plain(self, ctx):
         if ctx.defined_functor():
             func_name = ctx.defined_functor().getText()
-            
+ 
             if func_name == "$accessible_world" and ctx.tff_arguments():
                 args = ctx.tff_arguments()
                 term_ctxs = self.get_argument_term_contexts(args)
 
                 if self.both_args_universally_quantified_worlds(ctx, term_ctxs):
-                    
+
                     #  assume it is positive unless we find a ~ above
                     is_negated = False
-                    
+
                     # path: Tff_prefix_unary -> Tff_preunit_formula -> Tff_unitary_formula -> 
                     #       Tff_atomic_formula -> Tff_defined_atomic -> Tff_defined_plain (ctx)
-                    
+
                     p = ctx.parentCtx
                     steps = 0
                     while p and steps < 6:
@@ -172,13 +172,13 @@ class TPTPModalExtractor(TPTPListener):
                             break
                         p = p.parentCtx
                         steps += 1
-                    
+
                     # FIX: set universal_accessibility to True regardless of negation.
                     # then capture the polarity (t/f) to use during output generation.
                     self.universal_accessibility = True
                     self.universal_polarity = not is_negated
                     # --------------------------
-                        
+ 
                     return
 
                 if len(term_ctxs) >= 2:
@@ -195,7 +195,7 @@ class TPTPModalExtractor(TPTPListener):
 
                         self.worlds.add(from_world_txt)
                         self.worlds.add(to_world_txt)
-    
+ 
     def get_term_text(self, term_ctx):
         try:
             var_node = (term_ctx.tff_logic_formula()
@@ -217,7 +217,7 @@ class TPTPModalExtractor(TPTPListener):
                 return const_node.getText()
         except Exception:
             pass 
-            
+ 
         try:
             def_const_node = (term_ctx.tff_logic_formula()
                               .tff_unitary_formula()
@@ -229,13 +229,12 @@ class TPTPModalExtractor(TPTPListener):
                 return def_const_node.getText()
         except Exception:
             pass
-        
+ 
         return term_ctx.getText()
-    
+ 
     def is_universally_quantified_world(self, ctx, var_name):
-        """Check if a variable is universally quantified as a world in parent context."""
         parent = ctx.parentCtx
-        
+ 
         while parent:
             if isinstance(parent, TPTPParser.Tff_quantified_formulaContext):
                 if parent.tff_quantifier() and parent.tff_quantifier().getText() == "!":
@@ -246,13 +245,12 @@ class TPTPModalExtractor(TPTPListener):
                             if var == var_name and var_type == "$world":
                                 return True
             parent = parent.parentCtx
-        
+ 
         return False
-    
+ 
     def extract_typed_variables(self, var_list_ctx):
-        """Extract (name, type) tuples from a tff_variable_list context."""
         variables = []
-        
+ 
         def get_var_info(var_ctx):
             if not var_ctx:
                 return None
@@ -273,11 +271,11 @@ class TPTPModalExtractor(TPTPListener):
             var_ctx = None
             if hasattr(current_list, 'tff_variable') and callable(current_list.tff_variable):
                 var_ctx = current_list.tff_variable()
-            
+ 
             info = get_var_info(var_ctx)
             if info:
                 variables.append(info)
-            
+ 
             if hasattr(current_list, 'tff_variable_list') and callable(current_list.tff_variable_list):
                 current_list = current_list.tff_variable_list()
             else:
@@ -287,7 +285,7 @@ class TPTPModalExtractor(TPTPListener):
 
 
 class TPTPModalParserANTLR:
-    
+
     def __init__(self):
         self.block_regex = re.compile(
             r"tff\(([^,]+)\s*,\s*interpretation-worlds\s*,\s*(.*?)\)\s*\.\s*$",
@@ -306,14 +304,14 @@ class TPTPModalParserANTLR:
         return extractor
 
     def get_expanded_file_content(self, filepath: str) -> Optional[str]:
-        
+ 
         extractor = self.run_antlr_extractor(filepath)
-        
+
         with open(filepath, 'r', encoding='utf-8') as f:
             raw_text = f.read()
-        
+
         new_expanded_block = self.build_interpretation_block(extractor)
-        
+
         if self.block_regex.search(raw_text):
             new_file_content = self.block_regex.sub(new_expanded_block, raw_text, count=1)
             return new_file_content
@@ -334,9 +332,9 @@ class TPTPModalParserANTLR:
                 local_line = f"$local_world = {extractor.local_world}"
 
             edges_set: Set[Tuple[str, str]] = set()
-            
+
             acc_lines = []
-            
+
             if extractor.universal_accessibility and worlds:
                 expanded_edges = self.expand_accessibility(worlds)
                 for (u, v) in expanded_edges:
@@ -351,7 +349,7 @@ class TPTPModalParserANTLR:
             for u, vs in extractor.accessible_worlds.items():
                 for v in vs:
                     edges_set.add((u, v))
-            
+
             for (u, v) in sorted(edges_set):
                  acc_lines.append(f"$accessible_world({u},{v})")
 
@@ -385,28 +383,30 @@ class TPTPModalParserANTLR:
 
 def make_html_friendly(file_text) -> str:
     return file_text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    
+
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Expands universal accessibility in TPTP modal logic files.'
+        description='Expands universal accessibility in TPTP modal logic files. \n usage: python3 ExpandKripeInterpretation_V2 file_name output_path htmlFriendly? printToSTDOUT?'
     )
     parser.add_argument('file', help='Input TPTP file (.p or .tptp extension)')
     parser.add_argument('output_path', help="Output directory OR full file path")
-    parser.add_argument('html', help="1 for html sanitization, 0 for plain")
+    parser.add_argument('htmlFriendly', help="1 for html sanitization, 0 for plain")
+    parser.add_argument('printToSTDOUT', help="1 for printing to stdout , 0 for no printing")
+
     args = parser.parse_args()
-    
+
     tptp_parser = TPTPModalParserANTLR()
-    
+
     try:
         expanded_content = tptp_parser.get_expanded_file_content(args.file)
-        
+
         if expanded_content is None:
             print(f"Error: Could not find 'interpretation-worlds' block in {args.file}", file=sys.stderr)
             sys.exit(1)
-        
-        if args.html == '1':
+
+        if args.htmlFriendly == '1':
             final_output = make_html_friendly(expanded_content)
         else:
             final_output = expanded_content
@@ -419,17 +419,23 @@ def main():
         else:
             new_filename = args.output_path
             os.makedirs(os.path.dirname(os.path.abspath(new_filename)), exist_ok=True)
-        
+
         with open(new_filename, 'w', encoding='utf-8') as f:
             f.write(final_output)
-            
-        print(f"Successfully wrote expanded file to: {new_filename}")
-    
+
+
+        print("% SZS status Success")
+        if args.printToSTDOUT == '1':
+            print(final_output)
+#        print(f"Successfully wrote expanded file to: {new_filename}")
+
     except FileNotFoundError:
         print(f"Error: File '{args.file}' not found.", file=sys.stderr)
+        print("% SZS status NoSuccess")
         sys.exit(1)
     except Exception as e:
         print(f"Error processing file: {e}", file=sys.stderr)
+        print("% SZS status NoSuccess")
         import traceback
         traceback.print_exc()
         sys.exit(1)
