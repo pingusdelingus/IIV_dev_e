@@ -686,42 +686,6 @@ function normalizeClause(text) {
 }// end of normalizeClause fn
 
 
-/*
-TODO:
-LEGACY
-  function world_to_IIV_format(rawText) {
-
-  const lines     = rawText.split(/\r?\n/);
-  const typeLines = lines.filter(ln => TYPE_LINE_RE.test(ln));
-  const freeLines = lines.filter(ln => !TYPE_LINE_RE.test(ln));
-  const freeText  = freeLines.join("\n").trim();
-
-  if (/\btff\s*\(\s*[^,]+,\s*interpretation\s*,/i.test(freeText)) return rawText;
-
-  let blocks = [];
-  const chunks = freeText.split(/\r?\n\s*\r?\n/).filter(c => c.trim());
-  if (chunks.length > 1) {
-    for (const ch of chunks) blocks.push(...ch.split(SPLIT_RE).filter(b => b.trim()));
-  } else if (freeText) {
-    blocks = freeText.split(SPLIT_RE).filter(b => b.trim());
-  }
-  if (!blocks.length && freeText) blocks = [freeText];
-
-  const clauses = blocks.length ? blocks.map(normalizeClause) : [];
-
-  const name    = inferName(typeLines);
-
-  const joined = clauses.length ? clauses.join("\n  & ") : "";
-  const interp = joined ? `tff(${name},interpretation,\n  ( ${joined} ) ).` : "";
-
- 
-  const body = typeLines.join("\n").replace(/\s+$/u, "");
- 
-  return interp ? `${body}\n\n${interp}\n` : `${body}\n`;
-}// end of world to IIV 
-
-*/
-
 function world_to_IIV_format(rawText) {
   const lines     = rawText.split(/\r?\n/);
   const typeLines = lines.filter(ln => TYPE_LINE_RE.test(ln));
@@ -741,13 +705,10 @@ function world_to_IIV_format(rawText) {
 
   const body = typeLines.join("\n").replace(/\s+$/u, "");
   return interp ? `${body}\n\n${interp}\n` : `${body}\n`;
-}
+}// end of world_to_IIV_format
 
-/**
- * Split a string into clauses by detecting boundaries between *top-level*
- * parenthesized groups, e.g. “… )\n( …” (no & between them).
- * This respects balanced parentheses.
- */
+
+
 function splitTopLevelClauses(s) {
   const parts = [];
   let buf = "";
@@ -768,7 +729,6 @@ function splitTopLevelClauses(s) {
       if (s[j] === "(") {
         parts.push(buf.trim());
         buf = "";
-        // continue from before the '(' so it gets included next loop
         i = j - 1;
       }
     }
@@ -820,8 +780,6 @@ function parseDeclarations(rawInput)
 
 
 function parseInWorldBlocks(text) {
-  // 1. Decode HTML entities first to ensure clean parsing
-  // This handles &amp; -> &, &gt; -> >, &lt; -> <
   const cleanText = text
     .replace(/&amp;/g, '&')
     .replace(/&gt;/g, '>')
@@ -831,8 +789,6 @@ function parseInWorldBlocks(text) {
 
   const worldSet = new Set();
   
-  // 2. Identify all valid world names
-  // We look for 'tff(..., type, name : $world).'
   const worldDeclRe = /tff\([^,]+,\s*type\s*,\s*([A-Za-z0-9_]+)\s*:\s*\$world\s*\)\s*\./gim;
   let m;
   while ((m = worldDeclRe.exec(cleanText)) !== null) {
@@ -843,12 +799,10 @@ function parseInWorldBlocks(text) {
   const dict = {};
   for (const w of worlds) dict[w] = "";
 
-  // 3. Scan for $in_world blocks using a tokenizer approach
   const target = "$in_world";
   let idx = cleanText.indexOf(target);
 
   while (idx !== -1) {
-    // Determine context (negated or not) - Look backward for ~
     let isNegated = false;
     let backCheckIdx = idx - 1;
     while (backCheckIdx >= 0 && /\s/.test(cleanText[backCheckIdx])) {
@@ -858,25 +812,21 @@ function parseInWorldBlocks(text) {
         isNegated = true;
     }
 
-    // Move past "$in_world"
     let cursor = idx + target.length;
     
-    // Scan for the opening parenthesis '('
     while (cursor < cleanText.length && cleanText[cursor] !== '(') cursor++;
     
     if (cursor < cleanText.length) {
-      cursor++; // Skip '('
+      cursor++; 
 
-      // Parse 1st Argument (World Name or Variable)
       let argStart = cursor;
       while (cursor < cleanText.length && cleanText[cursor] !== ',') cursor++;
       let firstArg = cleanText.slice(argStart, cursor).trim();
 
       if (cursor < cleanText.length) {
-        cursor++; // Skip ','
+        cursor++; 
 
-        // Parse 2nd Argument (The Formula Body)
-        // We need to capture everything until the matching closing parenthesis
+        // capture everything until the matching closing parenthesis
         let bodyStart = cursor;
         let depth = 1; 
         
@@ -887,19 +837,15 @@ function parseInWorldBlocks(text) {
           cursor++;
         }
 
-        // The body is everything up to (but not including) the last closing paren
         if (depth === 0) {
           let body = cleanText.slice(bodyStart, cursor - 1).trim();
 
-          // Only process if not negated (unless you want to store negations too)
           if (!isNegated) {
              if (worldSet.has(firstArg)) {
-               // Case A: Concrete World Name
+               // Case 1: world name
                dict[firstArg] = (dict[firstArg] ? dict[firstArg] + "\n" : "") + body;
              } else {
-               // case B: ( [W : $world] : $in_world(W, ...))
-               // Heuristic: If we found a variable, assign this body to ALL worlds
-               // This matches the semantics of "For all W, in world W, holds..."
+               // case 2: ( [W : $world] : $in_world(W, ...))
                if (worlds.length > 0) {
                  for (const w of worlds) {
                    dict[w] = (dict[w] ? dict[w] + "\n" : "") + body;
@@ -920,106 +866,6 @@ function parseInWorldBlocks(text) {
   return dict;
 }
 
-
-/* OLD 
-function parseInWorldBlocks(text) {
-
-  const worldSet = new Set();
-  const worldDeclRe = /^\s*tff\([^,]+,\s*type\s*,\s*([A-Za-z_]\w*)\s*:\s*\$world\s*\)\s*\.\s*$/gim;
-  let m;
-  while ((m = worldDeclRe.exec(text)) !== null) {
-    worldSet.add(m[1]);
-  }
-  const worlds = Array.from(worldSet);
-
-  const dict = {};
-  for (const w of worlds) dict[w] = "";
-
-  // 2) Scan for $in_world(…)
-  const target = "$in_world(";
-  let idx = text.indexOf(target);
-
-  while (idx !== -1) {
-    const startArg = idx + target.length;
-
-    // parse first argument up to the comma (handles spaces)
-    let i = startArg;
-    while (i < text.length && /\s/.test(text[i])) i++;
-    let argStart = i;
-
-    // read identifier (world name or variable)
-    while (i < text.length && /[A-Za-z0-9_]/.test(text[i])) i++;
-    const firstArg = text.slice(argStart, i);
-
-    // skip spaces until the comma that separates arg and body
-    while (i < text.length && /\s/.test(text[i])) i++;
-    if (text[i] !== ",") {
-      // malformed; advance and continue
-      idx = text.indexOf(target, idx + 1);
-      continue;
-    }
-    const commaIdx = i;
-
-    // parse matching parens to get the body after the comma
-    let depth = 1; // we are inside $in_world( … ), so start at 1
-    i = commaIdx + 1;
-    while (i < text.length && depth > 0) {
-      const ch = text[i];
-      if (ch === "(") depth++;
-      else if (ch === ")") depth--;
-      i++;
-    }
-    // body is between comma+1 and last ) – 1
-    const value = text.slice(commaIdx + 1, i - 1).trim();
-
-    // 3) decide where to put it:
-    //    (a) concrete world name
-    //    (b) universally quantified variable ! [<var> : $world] : nearby
-    if (worldSet.has(firstArg)) {
-      // concrete world
-      dict[firstArg] = (dict[firstArg] ? dict[firstArg] + "\n" : "") + value;
-    } else {
-      // heuristic: look back a bit for a quantifier binding the same variable as $world
-      // e.g., ! [W: $world] :  ... $in_world(W, ...)
-      const lookback = text.slice(Math.max(0, idx - 400), idx);
-      const qRe = /!\s*\[\s*([A-Za-z_]\w*)\s*:\s*\$world\s*\]\s*:/;
-      const qm = qRe.exec(lookback);
-      const boundVar = qm ? qm[1] : null;
-
-      if (boundVar && boundVar === firstArg && worlds.length) {
-        for (const w of worlds) {
-          dict[w] = (dict[w] ? dict[w] + "\n" : "") + value;
-        }
-      } else {
-       dict.__unresolved = (dict.__unresolved ? dict.__unresolved + "\n" : "") + value;
-      }
-    }
-
-    // 4) next occurrence
-    idx = text.indexOf(target, i);
-  }
-
-  return dict;
-}// end of parseInWorldBlocks
-*/
-
-/*
-OLD
-
-function parseAccessibleWorlds(text) {
-  const worldDict = {};
-  const re = /\$accessible_world\((\w+),\s*(\w+)\)/g;
-  let m;
-  while ((m = re.exec(text)) !== null) {
-    const from = m[1], to = m[2];
-    if (!worldDict[from]) worldDict[from] = [];
-    worldDict[from].push(to);
-  }
-  return worldDict;
-
-}// end of parseAccessibleWorlds
-
-*/
 
 function parseAccessibleWorlds(text) {
   const worldDict = {};
@@ -1084,7 +930,7 @@ function getLocalWorld(inputText) {
   
   for (const line of lines) {
     if (line.includes('$local_world')) {
-      // Find the position of '$local_world'
+      // find the position of '$local_world'
       const startIdx = line.indexOf('$local_world');
       if (startIdx === -1) continue;
       
@@ -1132,13 +978,10 @@ function robustSplit(text) {
     for (let i = 0; i < text.length; i++) {
         const char = text[i];
         
-        // Handle Comments
         if (char === '%') { inComment = true; }
         if (char === '\n') { inComment = false; }
         
         if (inComment) {
-            // We generally want to preserve comments, 
-            // but if we are splitting logic, we ignore parens inside them
             current += char;
             continue; 
         }
@@ -1148,7 +991,6 @@ function robustSplit(text) {
 
         current += char;
 
-        // If we hit a dot at depth 0, that's a clause end
         if (depth === 0 && char === '.') {
             if (current.trim().length > 0) {
                 clauses.push(current.trim());
@@ -1277,7 +1119,6 @@ function openIIVInNewTab_viaForm(convertedText) {
 
 
 function getSvgContainer() {
-  // adjust this selector to where showGV renders the SVG
   return document.querySelector("#graph, .graph, .graph-container, svg") || document.querySelector("svg");
 }
 
@@ -1313,19 +1154,15 @@ function handleNodeMouseOut() {
 function handleNodeMouseOver(e, adjacencyList) {
 const startNodeId = e.currentTarget.id;
 
-//  console.log(adjacencyList);
   if (!startNodeId) return;
 
   const accessibleNodes = findAccessibleNodes(startNodeId, adjacencyList);
 
-  // we use Math.max with the spread operator (...) on the map's values.
   const maxDistance = Math.max(0, ...accessibleNodes.values());
 
   accessibleNodes.forEach((distance, nodeId) => {
-    // We only color the nodes that are reachable (distance > 0)
 
       const nodeElement = document.getElementById(nodeId);
-//          console.log(nodeElement);
         const shape = nodeElement.querySelector('polygon, ellipse');
     if ( (nodeElement && shape ) && (isAccessibilityReflexive(nodeElement.id , adjacencyList) || distance > 0) ) {
         if (shape) {
@@ -1353,7 +1190,6 @@ const startNodeId = e.currentTarget.id;
 
 
 function isAccessibilityReflexive(currNode, adjacencyList){
-//  console.log('yo im running isAccessibilityReflexive');
 
   const currNeighbors = adjacencyList[currNode] || [];
 
@@ -1362,17 +1198,11 @@ function isAccessibilityReflexive(currNode, adjacencyList){
     return false;
   }
 
-//  console.log("curr neighrs not empty for curr nod");
-//  console.log(currNeighbors);
-
-
   for (const neighbor of currNeighbors){
-//    console.log(`comparing : ${currNode} with ${neighbor}`);
-
     if (neighbor == currNode){
       return true;
     }
-  }// end of for 
+  }
 
   return false;
 }// end of isAccessibilityReflexive
@@ -1400,38 +1230,42 @@ function findAccessibleNodes(startNode, adjacencyList) {
   }
 
   return distances;
-}
+}// end of findAccessibleNodes
 
 
 function removeUnwantedWorldDelcarations(text){
   const lines = text.split('\n');
-
   const filteredLines = lines.filter(line => {
-    const cleanLine = line.replace(/\s+/g, '');
+   
+      const cleanLine = line.replace(/\s+/g, '');
 
     const isWorldDecl = cleanLine.endsWith(':$world).') || cleanLine.endsWith(':$world)');
 
+ 
     return !isWorldDecl;
   });
 
-  // 3. Join the remaining lines back together
   return filteredLines.join('\n');
 }
 
 function wireDelegatedClicks(inWorldMap) {
   const svg = getSvgContainer();
+ 
   if (!svg){console.log("failed to get svg,"); return;}
 
   // avoid duplicate listeners
   if (svg.__worldClickBound) return;
+ 
   svg.__worldClickBound = true;
+
+
 
   svg.addEventListener("click", (e) => {
     // find nearest node group
     const g = e.target.closest && e.target.closest("g.node");
     if (!g) return;
 
-    // prefer id; fallback to <title> or visible text
+    // prefer id but fallback to <title> or visible text
     const key = g.getAttribute("id")
              || g.querySelector("title")?.textContent?.trim()
              || g.querySelector("text")?.textContent?.trim();
@@ -1459,19 +1293,15 @@ function wireDelegatedClicks(inWorldMap) {
 }// end of wireDelegatedClicks
 
 function wrapInTPTP(rawText, worldName) {
-    // 1. Clean up input (remove existing newlines/extra spaces for cleaner processing)
-    //    We replace newlines with spaces to treat it as a stream.
     const cleanText = rawText.replace(/\r?\n/g, " ");
     
     const blocks = [];
     let depth = 0;
     let currentBlock = "";
     
-    // 2. Iterate through text to capture top-level balanced groups
     for (let i = 0; i < cleanText.length; i++) {
         const char = cleanText[i];
         
-        // Skip whitespace if we are not inside a block (between blocks)
         if (depth === 0 && /\s/.test(char)) {
             continue;
         }
@@ -1483,7 +1313,6 @@ function wrapInTPTP(rawText, worldName) {
         } else if (char === ')') {
             depth--;
             
-            // If depth hits 0, we just finished a top-level block
             if (depth === 0) {
                 blocks.push(currentBlock);
                 currentBlock = "";
@@ -1491,15 +1320,14 @@ function wrapInTPTP(rawText, worldName) {
         }
     }
 
-    // 3. Join all captured blocks with " & "
-    //    This inserts the ampersand exactly where you requested.
     const joinedString = blocks.join(" & ");
 
-    // 4. Wrap in the final TPTP structure
     return `tff(${worldName}, interpretation, ( ${joinedString} ) ).`;
-}
+}// end of wrapInTPTP
 
 
+
+// init function
 (function init() {
     const fileInput = document.getElementById("fileUploadBtn");
     const outPre = document.getElementById("output");
@@ -1539,99 +1367,6 @@ function wrapInTPTP(rawText, worldName) {
 })(); // end of init
 
 
-
-// old
-
-/* 
-(function init_old(){
-  const fileInput = document.getElementById("fileUploadBtn");
-
-  const outPre    = document.getElementById("output");
-
-//  console.log(`file input is :${outPre.innerText}`);
-  const visualizeBtn = document.getElementById("visualizeBtn");
-//  if (!fileInput || !outPre) return;
-
-  if (visualizeBtn) visualizeBtn.style.display = "block";
-  fileInput.style.display = "block";
-
-  fileInput.addEventListener("change", function(){
-    const file = this.files && this.files[0];
-    if (!file) return;
-
-    const fr = new FileReader();
-    fr.onload = () => {
-      const inputText = String(fr.result);
-      console.log(`${inputText}`);
-      window.og_text = inputText;
-
-      // parse once and stash globally for easy access
-
-      //TODO: update this map to have correct links;
-      const inWorldMap = parseInWorldBlocks(inputText);   // { w1: "...tptp...", ... }
-      window.__inWorldMap = inWorldMap;
-      window.__worldDictsFromInput = parseInWorldBlocks(inputText) // returns a dict of world tarski interpretations
-      window.__worldDeclarations = parseDeclarations(inputText)//string of declarations from input text
-
-//      console.log("world 2 is :")
- //     console.log(window.__worldDictsFromInput["w2"]);
-
-  //    console.log("world 1 is ");
-//      console.log(window.__worldDictsFromInput["w1"]);
-Object.entries(window.__worldDictsFromInput).forEach(([key, value]) => {
-  console.log(`${key} is : ${value}`);
-});
-
-      console.log("declarations are ");
-      console.log(window.__worldDeclarations);
-  
-
-      // need to assert that declarations don't have a
-
-      let worldAdj = parseAccessibleWorlds(inputText);    // fromat : { w1: [w2,...], ... }
-      if (Object.keys(worldAdj).length === 0) {
-        const declared = parseDeclaredWorlds(inputText);
-        worldAdj = Object.fromEntries(declared.map(w => [w, []]));
-      }
-
-      localWorld = getLocalWorld(inputText);
-
-      const dot = worldDictToGraphviz(worldAdj, localWorld);
-      outPre.textContent = dot;
-
-      showGV(dot);
-
-      // wait for render, then bind delegated clicks that use the parsed map
-      waitForSvgNodes(() => {
-        wireDelegatedClicks(window.__inWorldMap);
-        wireHoverEffects(worldAdj);
-
- const spinner = document.getElementById("loadingSymbol");
-
-      setTimeout( () => {
-
-        if (spinner) {
-          spinner.classList.add("hidden");}
-      }, 1000);
-
-
-      });
-    };
-    fr.readAsText(file, "utf-8");
-  });
-
-
-
-
-
-
-  if (!document.getElementById("output").textContent.trim().includes("PROOF_go_h")) {
-    visualize();
-    show_original_graph();
-  }
-})();
-
-*/
 
 
 </script>
