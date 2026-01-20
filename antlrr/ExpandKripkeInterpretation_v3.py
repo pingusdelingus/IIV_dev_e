@@ -349,12 +349,12 @@ def make_html_friendly(file_text: str) -> str:
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Expands universal accessibility in TPTP modal logic files. \n usage: python3 ExpandKripeInterpretation_V2 file_name output_path htmlFriendly? printToSTDOUT?'
+        description='Expands universal accessibility in TPTP modal logic files. \nusage: python3 ExpandKripeInterpretation_V2 file_name output_path htmlFriendly? printToSTDOUT?'
     )
     parser.add_argument('file', help='Input TPTP file (.p or .tptp extension)')
-    parser.add_argument('output_path', help="Output directory OR full file path")
-    parser.add_argument('htmlFriendly', help="1 for html sanitization, 0 for plain")
-    parser.add_argument('printToSTDOUT', help="1 for printing to stdout , 0 for no printing")
+    parser.add_argument('output_path', nargs='?', default="/dev/null", help='Output filepath location where result will be saved')
+    parser.add_argument('htmlFriendly', nargs='?',default="1", help="1 for html sanitization, 0 for plain")
+    parser.add_argument('printToSTDOUT', nargs='?',default="1",help="1 for printing to stdout , 0 for no printing")
 
     args = parser.parse_args()
 
@@ -372,17 +372,12 @@ def main():
         else:
             final_output = expanded_content
 
-        if os.path.isdir(args.output_path):
-            base_name = os.path.basename(args.file)
-            name_without_ext, ext = os.path.splitext(base_name)
-            out_dir = os.path.abspath(args.output_path)
-            new_filename = os.path.join(out_dir, f"{name_without_ext}_EXPANDED.s") 
-        else:
+        if args.output_path != '/dev/null':
             new_filename = args.output_path
             os.makedirs(os.path.dirname(os.path.abspath(new_filename)), exist_ok=True)
 
-        with open(new_filename, 'w', encoding='utf-8') as f:
-            f.write(final_output)
+            with open(new_filename, 'w', encoding='utf-8') as f:
+                f.write(final_output)
 
 
         print("% SZS status Success")
