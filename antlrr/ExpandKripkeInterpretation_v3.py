@@ -346,17 +346,20 @@ def make_html_friendly(file_text: str) -> str:
 
 
 
-
 def main():
     parser = argparse.ArgumentParser(
-        description='Expands universal accessibility in TPTP modal logic files. \nusage: python3 ExpandKripeInterpretation_V2 file_name output_path htmlFriendly? printToSTDOUT?'
-    )
-    parser.add_argument('file', help='Input TPTP file (.p or .tptp extension)')
-    parser.add_argument('output_path', nargs='?', default="/dev/null", help='Output filepath location where result will be saved')
-    parser.add_argument('htmlFriendly', nargs='?',default="1", help="1 for html sanitization, 0 for plain")
-    parser.add_argument('printToSTDOUT', nargs='?',default="1",help="1 for printing to stdout , 0 for no printing")
+        description='Expands universal accessibility in TPTP modal logic files.')
 
+    parser.add_argument('file', help='Input TPTP file (.p or .tptp extension)')
+
+    parser.add_argument('--output', default="/dev/null", help='Output filepath')
+    
+    parser.add_argument('--html', type=int, default=1, help="1 for html sanitization, 0 for plain")
+
+
+    parser.add_argument('--stdout', type=int, default=1, help="1 for printing to stdout, 0 for no printing")
     args = parser.parse_args()
+
 
     tptp_parser = TPTPModalParserANTLR()
 
@@ -364,38 +367,39 @@ def main():
         expanded_content = tptp_parser.get_expanded_file_content(args.file)
 
         if expanded_content is None:
+            print("% SZS status NoSuccess")
+            
             print(f"Error: Could not find 'interpretation-worlds' block in {args.file}", file=sys.stderr)
             sys.exit(1)
 
-        if args.htmlFriendly == '1':
+        if args.html == 1:
             final_output = make_html_friendly(expanded_content)
         else:
             final_output = expanded_content
 
-        if args.output_path != '/dev/null':
-            new_filename = args.output_path
+        if args.output != '/dev/null':
+            new_filename = args.output
             os.makedirs(os.path.dirname(os.path.abspath(new_filename)), exist_ok=True)
-
             with open(new_filename, 'w', encoding='utf-8') as f:
                 f.write(final_output)
 
-
         print("% SZS status Success")
-        if args.printToSTDOUT == '1':
+        
+        if args.stdout == 1:
             print(final_output)
-#        print(f"Successfully wrote expanded file to: {new_filename}")
 
     except FileNotFoundError:
+        print("% SZS status NoSuccess")
         print(f"Error: File '{args.file}' not found.", file=sys.stderr)
-        print("% SZS status NoSuccess")
         sys.exit(1)
+
     except Exception as e:
-        print(f"Error processing file: {e}", file=sys.stderr)
         print("% SZS status NoSuccess")
-        import traceback
-        traceback.print_exc()
+        print(f"Error processing file: {e}", file=sys.stderr)
         sys.exit(1)
 
 
 if __name__ == "__main__":
     main()
+
+
