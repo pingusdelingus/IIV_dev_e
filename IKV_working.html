@@ -15,7 +15,7 @@
       
         const preTags = document.querySelectorAll("pre");
         for (const tag of preTags){
-            block.innerText = "";
+            tag.innerText = "";
 
         }// end of for
       };
@@ -444,6 +444,7 @@ PROOF_GOES_HERE
       <p id="proofText" style="display: none"></p>
 
 <!--       <script type="text/javascript" src="buildbundle/js/bundle.js"></script >    --> 
+
 <script type="text/javascript" src="https://tptp.org/CGIFormData/IKVbundle.js"></script >    
           
 
@@ -455,7 +456,10 @@ window.interestScalingBool = false;
 
 
 function renderGraphFromInput(inputText) {
-    console.log("Processing input text...");
+
+    window.debug = true;
+
+    if (window.debug ) console.log("Processing input text...");
     window.og_text = inputText;
 
     const inWorldMap = parseInWorldBlocks(inputText);
@@ -463,9 +467,13 @@ function renderGraphFromInput(inputText) {
     window.__worldDictsFromInput = parseInWorldBlocks(inputText);
     window.__worldDeclarations = parseDeclarations(inputText);
 
+    if (window.debug) {
     Object.entries(window.__worldDictsFromInput).forEach(([key, value]) => {
         console.log(`${key} is : ${value}`);
     });
+  
+    }// end of if
+
 
     let worldAdj = parseAccessibleWorlds(inputText);
     if (Object.keys(worldAdj).length === 0) {
@@ -629,13 +637,13 @@ function splitTopLevelClauses(s) {
 
 function parseDeclarations(rawInput)
 {
-  var answer = "";
-  var lines = rawInput.split(/\r?\n/);
+  var lines = rawInput.split(".");
   var out = []
 
  let started = false;
 
-  for (const ln of lines) {
+  for ( ln of lines) {
+    ln = ln + ".";
     if (TYPE_LINE_RE.test(ln)) {
       started = true;
       out.push(ln);
@@ -660,7 +668,6 @@ function parseDeclarations(rawInput)
     }
     break;
   }
-
 
   return out.join("\n");
 
