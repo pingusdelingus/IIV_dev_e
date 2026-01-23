@@ -193,6 +193,10 @@ function showGV(dot) {
 	showLoadingSpinner()
 	graphviz.renderDot(htmlDecode(dot));
 	graphviz.on("end", function () {
+
+//const svg = d3.select("#graph svg");
+              const width = window.innerWidth;
+              const height = window.innerHeight;
 		// add hover eventlisteners and update window.proof to tell
 		// it where to find the svg nodes corresponding to "proof"/json nodes
 		for (let node of document.querySelectorAll("g.node")) {

@@ -354,7 +354,7 @@ def main():
 
     parser.add_argument('--output', default="/dev/null", help='Output filepath')
     
-    parser.add_argument('--html', type=int, default=1, help="1 for html sanitization, 0 for plain")
+    parser.add_argument('--html', type=int, default=0, help="1 for html sanitization, 0 for plain")
 
 
     parser.add_argument('--stdout', type=int, default=1, help="1 for printing to stdout, 0 for no printing")

@@ -10,9 +10,14 @@
       <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&amp;display=swap">
     <script>
       document.body.onload = function() {
-//        window.stuff = document.querySelectorAll("pre");
  //       window.stuff[0].innerText = "";
-  //      window.stuff[1].innerText = "";
+  //      window.stuff[1].innerText = ""; ... 
+      
+        const preTags = document.querySelectorAll("pre");
+        for (const tag of preTags){
+            block.innerText = "";
+
+        }// end of for
       };
     </script>
     <script>
@@ -26,6 +31,7 @@
         padding: 0px;
         width: 100%;
         height: 100%;
+        overflow:hidden;
       }
 
       * {
@@ -162,8 +168,15 @@
       /* graphviz */
 
       #graph svg {
-        width: 100%;
-        height: 100%;
+        width: 80vw;
+        height: 80vh;
+        display:flex;
+        align-items: center;
+
+      }
+      
+      #index {
+        margin:10px;
       }
 
       /* generated slider css */
@@ -319,7 +332,7 @@
 
       <!-- PROOF_WENT_HERE-->
       <pre id="output" style="display: none">  
-      PROOF_GOES_HERE
+PROOF_GOES_HERE
       </pre>
 
       <input type="file" name="fileUploadBtn" id="fileUploadBtn" style="display:none"/>
@@ -430,8 +443,9 @@
 
       <p id="proofText" style="display: none"></p>
 
-      <script type="text/javascript" src="BuildBundle/js/bundle.js"></script >   
-
+<!--       <script type="text/javascript" src="buildbundle/js/bundle.js"></script >    --> 
+<script type="text/javascript" src="https://tptp.org/CGIFormData/IKVbundle.js"></script >    
+          
 
 <script type="text/javascript">
 
@@ -875,10 +889,28 @@ function robustSplit(text) {
     return clauses;
 }
 
+function calculateGraphVizZoom(width, height)
+{
+  return   (width / height) * 100.0 - 250;
+}
+
 
 function worldDictToGraphviz(worldAdj, localWorld) {
+  const defaultVP = 175.0;
+const width = window.innerWidth || document.documentElement.clientWidth || document.body.clientWidth;
+const height = window.innerHeight || document.documentElement.clientHeight || document.body.clientHeight;
+  console.log(`width is : ${width}`);
+  console.log(`height is : ${height}`);
+// calculation to find a good zoom for the first render
+  const viewports = calculateGraphVizZoom(width, height) || defaultVP;
+  if (viewports === defaultVP){
+    console.log('using default viewport num');
+  }
+  console.log(`using viewport of : ${viewports}`);
   const lines = [];
   lines.push("digraph G {");
+  lines.push('pad="0.5"');
+  lines.push(`size="1!"`); // working for now
   lines.push('node [style=filled, fontname="JetBrains Mono", fontsize=10];');
   lines.push("  rankdir=TB;");
   lines.push("");
@@ -898,8 +930,8 @@ function worldDictToGraphviz(worldAdj, localWorld) {
     lines.push(`  { rank=min; ${localWorld}; }`);
     lines.push("");
    const hasAnyEdges = Object.values(worldAdj).some(tos => tos.length > 0);
-    console.log("has any edges is: ")
-    console.log(hasAnyEdges)
+//    console.log("has any edges is: ")
+//   console.log(hasAnyEdges)
   
   if (!hasAnyEdges) {
     // create invisible edges from localWorld to all other nodes to establish hierarchy
@@ -917,19 +949,6 @@ function worldDictToGraphviz(worldAdj, localWorld) {
   } 
 
  /* 
-  else if (!localWorld){
-    
-    lines.push(` {rank=min; ${localWorld};`);
-      
-    var index = 1;
-    for (const node of Object.keys(worldAdj)){
-      if (node != localWorld){
-
-    lines.push(` {rank=mink; ${localWorld};`);
-      }
-    }
-
-  }
 
   */
   
@@ -956,7 +975,11 @@ function worldDictToGraphviz(worldAdj, localWorld) {
   }
   
   lines.push("}");
+ // console.log('end of world dict to graph viz');
+//  console.log(lines.join("\n"));
   return lines.join("\n");
+
+
 
 }// end of world dict to graph viz 
 

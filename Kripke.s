@@ -59,4 +59,3 @@ tff(people_mappings,interpretation-mappings,
         & peaceful(domain2child(child_1))
         & people_mappings(domain2child(child_1))
         & rains )) ).
-%--------------------------------------------------------------------------------------------------
