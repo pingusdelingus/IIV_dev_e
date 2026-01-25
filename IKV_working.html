@@ -808,13 +808,38 @@ function parseAccessibleWorlds(text) {
 
 
 function parseDeclaredWorlds(text) {
-  return text.split("\n")
+
+return text.split(".")
+    .map(statement => {
+      // 2. Remove all whitespace (newlines, tabs, spaces) for easier matching
+      const cleanStatement = statement.replace(/\s+/g, "");
+
+      // 3. Check if it contains both the $world type and the tff signature
+      if (cleanStatement.includes("$world") && cleanStatement.includes("tff(")) {
+        
+        // 4. Extract the world name
+        // Example cleanStatement: "tff(w1_decl,type,w1:$world)"
+        // We look for the part between ',' and ':$world'
+        const match = cleanStatement.match(/,([^,]+):\$world/);
+        
+        return match ? match[1] : null;
+      }
+      return null;
+    })
+    // 5. Filter out nulls (statements that weren't world declarations)
+    .filter(world => world !== null);
+
+
+ /* return text.split("\n")
     .filter(line => (line.includes("$world") && line.includes("tff")))
     .map(world => {
       const left  = world.split(":")[0];
       const parts = left.split(",");
       return parts[parts.length - 1].trim();
     });
+
+    */ 
+
 }// end of parseDeclaredWorlds
 
 
