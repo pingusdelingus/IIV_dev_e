@@ -426,7 +426,7 @@ PROOF_GOES_HERE
           </div>
 
           <div id="back" class="box">
-            <a href=""><h2>Back To Home</h2></a>
+            <a href="https://tptp.org"><h2>Back To Home</h2></a>
           </div>
         </div>
       </div>
@@ -443,9 +443,11 @@ PROOF_GOES_HERE
 
       <p id="proofText" style="display: none"></p>
 
-<!--       <script type="text/javascript" src="buildbundle/js/bundle.js"></script >    --> 
-
-<script type="text/javascript" src="https://tptp.org/CGIFormData/IKVbundle.js"></script >    
+<!-- Local bundle (rebuild with: cd BuildBundle/js && make build_bundle) -->
+<script type="text/javascript" src="BuildBundle/js/bundle.js"></script>
+<!-- Remote bundle (uncomment for production deployment):
+<script type="text/javascript" src="https://tptp.org/CGIFormData/IKVbundle.js"></script>
+-->
           
 
 <script type="text/javascript">
@@ -456,56 +458,73 @@ window.interestScalingBool = false;
 
 
 function renderGraphFromInput(inputText) {
-
-    window.debug = true;
-
-    if (window.debug ) console.log("Processing input text...");
     window.og_text = inputText;
+    console.log("Processing input text...");
 
-    const inWorldMap = parseInWorldBlocks(inputText);
-    window.__inWorldMap = inWorldMap;
-    window.__worldDictsFromInput = parseInWorldBlocks(inputText);
-    window.__worldDeclarations = parseDeclarations(inputText);
-
-    if (window.debug) {
-    Object.entries(window.__worldDictsFromInput).forEach(([key, value]) => {
-        console.log(`${key} is : ${value}`);
-    });
-  
-    }// end of if
-
-
-    let worldAdj = parseAccessibleWorlds(inputText);
-    if (Object.keys(worldAdj).length === 0) {
-        const declared = parseDeclaredWorlds(inputText);
-        worldAdj = Object.fromEntries(declared.map(w => [w, []]));
+    // ── Parse Kripke structure ────────────────────────────────────────────────
+    // Prefer the ANTLR4-based tree walk from the bundle (parseKripke).
+    // Fall back to the inline regex helpers when the bundle hasn't been rebuilt yet.
+    let kripkeData;
+    if (typeof window.parseKripke === 'function') {
+        console.log('Using ANTLR4 parseKripke');
+        kripkeData = window.parseKripke(inputText);
+    } else {
+        console.warn('parseKripke not available – rebuild the bundle (make build_bundle). Using regex fallback.');
+        kripkeData = {
+            worlds:             parseDeclaredWorlds(inputText),
+            accessibilityEdges: parseAccessibleWorlds(inputText),
+            localWorld:         getLocalWorld(inputText),
+            inWorldMap:         parseInWorldBlocks(inputText),
+        };
     }
 
-    const localWorld = getLocalWorld(inputText);
+    window.__inWorldMap         = kripkeData.inWorldMap;
+    window.__worldDictsFromInput = kripkeData.inWorldMap;
+    window.__worldDeclarations  = parseDeclarations(inputText);
 
+    console.log('worlds:', kripkeData.worlds);
+    console.log('localWorld:', kripkeData.localWorld);
+    console.log('accessibilityEdges:', kripkeData.accessibilityEdges);
+    console.log('inWorldMap:', kripkeData.inWorldMap);
+
+    // ── Build world adjacency ─────────────────────────────────────────────────
+    let worldAdj = kripkeData.accessibilityEdges;
+    if (Object.keys(worldAdj).length === 0) {
+        worldAdj = Object.fromEntries(kripkeData.worlds.map(w => [w, []]));
+    }
+
+    // ── Render ────────────────────────────────────────────────────────────────
+    const localWorld = kripkeData.localWorld;
     const dot = worldDictToGraphviz(worldAdj, localWorld);
 
-    const outPre = document.getElementById("output");
-    if(outPre) outPre.textContent = dot; 
-
-    if (typeof showGV === "function") {
+    if (typeof showGV === 'function') {
         showGV(dot);
     } else {
-        console.error("showGV function missing, is bundle.js loaded?");
+        console.error('showGV missing – is bundle.js loaded?');
     }
 
     waitForSvgNodes(() => {
         wireDelegatedClicks(window.__inWorldMap);
         wireHoverEffects(worldAdj);
 
-        const spinner = document.getElementById("loadingSymbol");
+        const spinner = document.getElementById('loadingSymbol');
+        setTimeout(() => { if (spinner) spinner.classList.add('hidden'); }, 1000);
+
+        // Open the Settings/Node-info panels (mirrors IDV behaviour)
+        const settings = document.querySelector('#settings');
+        if (settings && settings.children[0]) settings.children[0].click();
         setTimeout(() => {
-            if (spinner) spinner.classList.add("hidden");
-        }, 1000);
+            const hdr = document.querySelector('#nodeInfoContainer > .settingsHeader');
+            if (hdr) hdr.click();
+        }, 500);
     });
 }
 
 function removeTooltips() {
+  // In Kripke (interpretation) mode window.proof is never populated, so bail
+  // immediately rather than polling forever.
+  if (window.interpretation && !window.proof) return;
+
   const keys   = Array.from(document.querySelectorAll("g.node title")).map(x => x.innerHTML);
   const titles = Array.from(document.querySelectorAll("svg title"));
   if (!window.proof || keys.length < Object.keys(window.proof).length) {
@@ -522,32 +541,14 @@ if (window.interpretation) {
   if (el) el.hidden = true;
 }
 
-function show_original_graph() {
-  setTimeout(function () {
+// show_original_graph() was the IDV derivation-proof renderer.
+// IKV uses renderGraphFromInput() instead (ANTLR4 Kripke walk → worldDictToGraphviz → showGV).
 
-    window.nodeMAP = getNodeMap(proofText);
-    window.proofText     = document.getElementById("proofText").innerText;
-    window.originalProof = parseProof(proofText);
-    window.proof         = JSON.parse(JSON.stringify(originalProof));
-    
-    console.log("proof text is :")
-    console.log(document.getElementById("proofText").innerText)
-
-    //assignInterestingnessToHeightAndWidth();
-    showGV(proofText);
-
-    if (window.interpretation) removeTooltips();
-
-    const settings = document.querySelector("#settings");
-    if (settings && settings.children[0]) settings.children[0].click();
-    setTimeout(() => {
-      const hdr = document.querySelector("#nodeInfoContainer > .settingsHeader");
-      if (hdr) hdr.click();
-    }, 500);
-  }, 200);
-}
-
-document.querySelector("#visualizeBtn")?.addEventListener("click", show_original_graph);
+document.querySelector("#visualizeBtn")?.addEventListener("click", function () {
+    const outPre = document.getElementById("output");
+    const text = outPre ? outPre.textContent.trim() : "";
+    if (text.length > 0) renderGraphFromInput(text);
+});
 
 function visualize() {
   window.untouchedProof = document.querySelector('#proofText');
@@ -635,6 +636,44 @@ function splitTopLevelClauses(s) {
 }// end of splitTopLevelClauses
 
 
+function parseDeclarations(rawInput) {
+    var lines = rawInput.split(".");
+    var out = [];
+    let started = false;
+
+    const TYPE_LINE_RE = /^\s*tff\([^)]*,\s*type\s*,/i;
+
+    for (let rawLn of lines) {
+        
+        let ln = rawLn + ".";
+
+        let cleanLn = ln.replace(/%.*/g, "").trim();
+
+        if (cleanLn === "." || cleanLn === "") {
+            if (started) {
+                out.push(ln);
+            }
+            continue;
+        }
+
+        if (TYPE_LINE_RE.test(cleanLn)) {
+            started = true;
+            out.push(ln);
+            continue;
+        }
+
+        if (!started) {
+            continue;
+        }
+
+        break;
+    }
+
+    return out.join("\n");
+}
+
+/*
+old 
 function parseDeclarations(rawInput)
 {
   var lines = rawInput.split(".");
@@ -672,7 +711,8 @@ function parseDeclarations(rawInput)
   return out.join("\n");
 
 }// end of parseDeclarations
-
+old 
+*/
 
 function parseInWorldBlocks(text) {
   const cleanText = text
@@ -768,34 +808,43 @@ function parseAccessibleWorlds(text) {
   let idx = text.indexOf(target);
 
   while (idx !== -1) {
-    let isNegated = false;
+    // Check for negation: skip back past any whitespace
     let backIdx = idx - 1;
-
-    while (backIdx >= 0 && /\s/.test(text[backIdx])) {
-      backIdx--;
-    }
-
-    if (backIdx >= 0 && text[backIdx] === '~') {
-      isNegated = true;
-    }
+    while (backIdx >= 0 && /\s/.test(text[backIdx])) backIdx--;
+    const isNegated = backIdx >= 0 && text[backIdx] === '~';
 
     if (!isNegated) {
       const openParen = text.indexOf('(', idx + target.length);
-      
       if (openParen !== -1) {
-        const closeParen = text.indexOf(')', openParen);
-        
-        if (closeParen !== -1) {
-          const content = text.substring(openParen + 1, closeParen);
-          const parts = content.split(',');
+        // Extract first argument (from-world) with bracket-aware scanning
+        let cur = openParen + 1, depth = 0, argStart = openParen + 1;
 
-          if (parts.length === 2) {
-            const from = parts[0].trim();
-            const to = parts[1].trim();
-
-            if (!worldDict[from]) worldDict[from] = [];
-            worldDict[from].push(to);
+        while (cur < text.length) {
+          const ch = text[cur];
+          if      (ch === '(')                    depth++;
+          else if (ch === ')' && depth === 0)     break;   // hit close of $accessible_world(
+          else if (ch === ')') depth--;
+          else if (ch === ',' && depth === 0) {
+            const from = text.slice(argStart, cur).trim();
+            // Extract second argument (to-world)
+            const toStart = cur + 1;
+            let j = toStart, d2 = 0;
+            while (j < text.length) {
+              const c = text[j];
+              if      (c === '(')                  d2++;
+              else if (c === ')' && d2 === 0)      break;
+              else if (c === ')') d2--;
+              else if (c === ',' && d2 === 0)      break;
+              j++;
+            }
+            const to = text.slice(toStart, j).trim();
+            if (from && to) {
+              if (!worldDict[from]) worldDict[from] = [];
+              worldDict[from].push(to);
+            }
+            break;
           }
+          cur++;
         }
       }
     }
@@ -880,7 +929,7 @@ function getLocalWorld(inputText) {
         i++;
       }
       
-      if (worldName.startsWith('world_') || worldName.startsWith('w')) {
+      if (worldName) {
         return worldName;
       }
     }
@@ -1163,7 +1212,7 @@ function findAccessibleNodes(startNode, adjacencyList) {
 
 
 function removeUnwantedWorldDelcarations(text){
-  const lines = text.split('\n');
+  const lines = text.split('.');
   const filteredLines = lines.filter(line => {
    
       const cleanLine = line.replace(/\s+/g, '');
@@ -1174,8 +1223,8 @@ function removeUnwantedWorldDelcarations(text){
     return !isWorldDecl;
   });
 
-  return filteredLines.join('\n');
-}
+  return filteredLines.join('.');
+}// removeUnwantedWorldDelcarations
 
 function wireDelegatedClicks(inWorldMap) {
   const svg = getSvgContainer();
@@ -1265,7 +1314,9 @@ function wrapInTPTP(rawText, worldName) {
     if (visualizeBtn) visualizeBtn.style.display = "block";
     if (fileInput) fileInput.style.display = "block";
 
-    // file upload listener
+    // file upload listener — just stores the file content; rendering is
+    // triggered by the Visualize button (which first calls visualize() to
+    // make #idv visible, then calls renderGraphFromInput via its click listener).
     if (fileInput) {
         fileInput.addEventListener("change", function() {
             const file = this.files && this.files[0];
@@ -1273,23 +1324,18 @@ function wrapInTPTP(rawText, worldName) {
 
             const fr = new FileReader();
             fr.onload = () => {
-                renderGraphFromInput(String(fr.result));
+                const out = document.getElementById("output");
+                if (out) out.textContent = String(fr.result);
             };
             fr.readAsText(file, "utf-8");
         });
     }
 
     if (outPre) {
-
-        // we know that there is copy pasted text so now we just display the grahp
         const existingText = outPre.textContent.trim();
-        
         if (existingText.length > 0 && existingText.includes("tff")) {
-            console.log("Found existing code in #output, visualizing automatically...");
-            
-            visualize(); 
-            show_original_graph();
-            
+            console.log("Found existing TPTP in #output, visualizing automatically...");
+            visualize();
             renderGraphFromInput(existingText);
         }
     }
