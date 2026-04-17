@@ -6,6 +6,12 @@ import {default as Lexer} from './TPTPLexer';
 import {default as Parser} from './TPTPParser';
 import {default as Listener} from './TPTPListener';
 
+// Expose parser components globally so external page scripts can subclass Listener
+// and run their own tree walks without re-bundling.
+window.TPTPLexer    = Lexer;
+window.TPTPParser   = Parser;
+window.TPTPListener = Listener;
+
 const body = document.body;
 
 // Preconnect for Google Fonts
@@ -587,6 +593,231 @@ function getNodeMap(proofText){
 }// end of getNodeMap
 
 
+// ─── KripkeFormatter & parseKripke ──────────────────────────────────────────
+//
+// ANTLR4 listener that extracts Kripke modal-logic structure from a TPTP file.
+// Mirrors the Python TPTPModalExtractor in antlrr/ExpandKripkeInterpretation.py.
+//
+// Extracts from tff_annotated nodes:
+//   role=type            → world declarations  (name : $world)
+//   role=interpretation* → $local_world, $accessible_world, $in_world
+//
+// ctx.tff_formula().getText() returns whitespace-free text (WS channel is
+// skipped by the lexer), so all pattern matching works without spaces.
+
+class KripkeFormatter extends Listener {
+
+	// originalText: the raw TPTP source string, used to extract formula bodies
+	// with original whitespace intact.  getText() strips whitespace, which
+	// breaks IIV's TPTP parser on typed quantifiers like ! [P : person] :.
+	constructor(originalText = '') {
+		super();
+		this.originalText       = originalText;
+		this.worlds             = new Set();
+		this.accessibilityEdges = {};
+		this.localWorld         = null;
+		this.domainBodies       = {};   // { worldName: string[] }  ← interpretation-domains
+		this.mappingBodies      = {};   // { worldName: string[] }  ← interpretation-mappings
+		this.inWorldMap         = {};   // { worldName: string[] }  ← union of all roles
+		this.globalDistincts    = [];   // $distinct(...) from interpretation-domains
+	}
+
+	enterTff_annotated(ctx) {
+		const role        = ctx.formula_role().getText();
+		// Compact form (no whitespace) — only used for world-name pattern matching.
+		const fmlCompact  = ctx.tff_formula().getText();
+		// Original source text — used for all body extraction so whitespace is
+		// preserved and IIV's TPTP parser can handle typed quantifiers correctly.
+		const fmlCtx = ctx.tff_formula();
+		const fmlOrig = (this.originalText && fmlCtx.start && fmlCtx.stop)
+			? this.originalText.slice(fmlCtx.start.start, fmlCtx.stop.stop + 1)
+			: fmlCompact;
+
+		// World declarations appear with either "type" or "type-interpretation" role.
+		if (role === 'type' || role === 'type-interpretation') {
+			const m = fmlCompact.match(/^([A-Za-z0-9_]+):\$world$/);
+			if (m) {
+				const w = m[1];
+				this.worlds.add(w);
+				for (const map of [this.inWorldMap, this.domainBodies, this.mappingBodies]) {
+					if (!(w in map)) map[w] = [];
+				}
+				if (!(w in this.accessibilityEdges)) this.accessibilityEdges[w] = [];
+				return;
+			}
+		}
+
+		// Process accessibility and $in_world facts from pure interpretation roles.
+		if (role.includes('interpretation') && !role.startsWith('type')) {
+			this._processFormula(fmlOrig, role);
+		}
+	}
+
+	_processFormula(text, role) {
+		// $local_world match — allow optional whitespace around '='.
+		const lm = text.match(/\$local_world\s*=\s*([A-Za-z0-9_]+)/);
+		if (lm && !this.localWorld) this.localWorld = lm[1];
+
+		this._scanAccessibleWorld(text);
+		this._scanInWorld(text, role);
+
+		if (role === 'interpretation-domains') {
+			this._scanDistinct(text);
+		}
+	}
+
+	// Returns true if the character before position idx (skipping whitespace)
+	// is '~', meaning the predicate at idx is negated.
+	_isNegated(text, idx) {
+		let back = idx - 1;
+		while (back >= 0 && /\s/.test(text[back])) back--;
+		return back >= 0 && text[back] === '~';
+	}
+
+	_scanAccessibleWorld(text) {
+		const pred = '$accessible_world';
+		let idx = text.indexOf(pred);
+		while (idx !== -1) {
+			if (!this._isNegated(text, idx)) {
+				let cur = idx + pred.length;
+				while (cur < text.length && text[cur] !== '(') cur++;
+				if (cur < text.length) {
+					cur++;
+					const [from, sepPos] = this._nextArg(text, cur);
+					if (from !== null && sepPos < text.length && text[sepPos] === ',') {
+						const [to] = this._nextArg(text, sepPos + 1);
+						const fromT = from.trim(), toT = (to || '').trim();
+						if (fromT && toT) {
+							if (!this.accessibilityEdges[fromT]) this.accessibilityEdges[fromT] = [];
+							if (!this.accessibilityEdges[fromT].includes(toT))
+								this.accessibilityEdges[fromT].push(toT);
+						}
+					}
+				}
+			}
+			idx = text.indexOf(pred, idx + pred.length);
+		}
+	}
+
+	_scanDistinct(text) {
+		const pred = '$distinct';
+		let idx = text.indexOf(pred);
+		while (idx !== -1) {
+			if (!this._isNegated(text, idx)) {
+				let cur = idx + pred.length;
+				while (cur < text.length && text[cur] !== '(') cur++;
+				if (cur < text.length) {
+					cur++;
+					let depth = 1, start = cur;
+					while (cur < text.length && depth > 0) {
+						if      (text[cur] === '(') depth++;
+						else if (text[cur] === ')') depth--;
+						cur++;
+					}
+					const args = text.slice(start, cur - 1).replace(/\s+/g, '');
+					this.globalDistincts.push(`$distinct(${args})`);
+				}
+			}
+			idx = text.indexOf(pred, idx + pred.length);
+		}
+	}
+
+	_scanInWorld(text, role) {
+		const isDomain  = role === 'interpretation-domains';
+		const isMapping = role === 'interpretation-mappings';
+
+		const pred = '$in_world';
+		let idx = text.indexOf(pred);
+		while (idx !== -1) {
+			if (!this._isNegated(text, idx)) {
+				let cur = idx + pred.length;
+				while (cur < text.length && text[cur] !== '(') cur++;
+				if (cur < text.length) {
+					cur++;
+					const [worldArg, sepPos] = this._nextArg(text, cur);
+					const wTrimmed = worldArg ? worldArg.trim() : null;
+					if (wTrimmed !== null && sepPos < text.length && text[sepPos] === ',') {
+						const bodyStart = sepPos + 1;
+						let depth = 1, bodyEnd = bodyStart;
+						while (bodyEnd < text.length && depth > 0) {
+							if      (text[bodyEnd] === '(') depth++;
+							else if (text[bodyEnd] === ')') depth--;
+							bodyEnd++;
+						}
+						const body = text.slice(bodyStart, bodyEnd - 1).trim();
+
+						const targets = this.worlds.has(wTrimmed)
+							? [wTrimmed]
+							: Array.from(this.worlds);
+
+						for (const w of targets) {
+							if (!this.inWorldMap[w])    this.inWorldMap[w]    = [];
+							if (!this.domainBodies[w])  this.domainBodies[w]  = [];
+							if (!this.mappingBodies[w]) this.mappingBodies[w] = [];
+
+							this.inWorldMap[w].push(body);
+							if (isDomain)       this.domainBodies[w].push(body);
+							else if (isMapping) this.mappingBodies[w].push(body);
+						}
+					}
+				}
+			}
+			idx = text.indexOf(pred, idx + pred.length);
+		}
+	}
+
+	// Scan forward from `start` stopping at a top-level ',' or ')'.
+	// Returns [argText, endPosition].
+	_nextArg(text, start) {
+		let i = start, depth = 0;
+		while (i < text.length) {
+			const ch = text[i];
+			if      (ch === '(')                   depth++;
+			else if (ch === ')') { if (depth === 0) return [text.slice(start, i), i]; depth--; }
+			else if (ch === ',' && depth === 0)    return [text.slice(start, i), i];
+			i++;
+		}
+		return [text.slice(start), i];
+	}
+}
 
 
-export { parseProof, proofToGV, getNodeMap };
+/**
+ * Run an ANTLR4 tree walk over `text` and return a Kripke structure:
+ *   { worlds, accessibilityEdges, localWorld, inWorldMap }
+ *
+ * This is the ANTLR4-based replacement for the regex helpers in IKV_working.html
+ * (parseInWorldBlocks, parseAccessibleWorlds, parseDeclaredWorlds, getLocalWorld).
+ */
+function parseKripke(text) {
+	const chars  = new antlr4.default.InputStream(text);
+	const lexer  = new Lexer(chars);
+	const tokens = new antlr4.default.CommonTokenStream(lexer);
+	const parser = new Parser(tokens);
+	parser.buildParseTrees = true;
+
+	const formatter = new KripkeFormatter(text);
+
+	let tree;
+	console.log('Beginning Kripke parsing…');
+	while ((tree = parser.tptp_input())) {
+		if (tree.getText() === '<EOF>') break;
+		antlr4.default.tree.ParseTreeWalker.DEFAULT.walk(formatter, tree);
+	}
+	console.log('Finished Kripke parsing!');
+
+	return {
+		worlds:             Array.from(formatter.worlds),
+		accessibilityEdges: formatter.accessibilityEdges,
+		localWorld:         formatter.localWorld,
+		inWorldMap:         formatter.inWorldMap,
+		domainBodies:       formatter.domainBodies,
+		mappingBodies:      formatter.mappingBodies,
+		globalDistincts:    formatter.globalDistincts,
+	};
+}
+
+window.parseKripke = parseKripke;
+
+
+export { parseProof, proofToGV, getNodeMap, parseKripke };

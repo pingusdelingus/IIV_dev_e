@@ -470,22 +470,32 @@ function renderGraphFromInput(inputText) {
         kripkeData = window.parseKripke(inputText);
     } else {
         console.warn('parseKripke not available – rebuild the bundle (make build_bundle). Using regex fallback.');
+        const inWorldMap = parseInWorldBlocks(inputText);
+        const { domainBodies, mappingBodies, globalDistincts } = parseInWorldBlocksByRole(inputText, inWorldMap);
         kripkeData = {
-            worlds:             parseDeclaredWorlds(inputText),
+            worlds:          parseDeclaredWorlds(inputText),
             accessibilityEdges: parseAccessibleWorlds(inputText),
-            localWorld:         getLocalWorld(inputText),
-            inWorldMap:         parseInWorldBlocks(inputText),
+            localWorld:      getLocalWorld(inputText),
+            inWorldMap,
+            domainBodies,
+            mappingBodies,
+            globalDistincts,
         };
     }
 
-    window.__inWorldMap         = kripkeData.inWorldMap;
+    window.__inWorldMap          = kripkeData.inWorldMap;
     window.__worldDictsFromInput = kripkeData.inWorldMap;
-    window.__worldDeclarations  = parseDeclarations(inputText);
+    window.__domainBodies        = kripkeData.domainBodies  || {};
+    window.__mappingBodies       = kripkeData.mappingBodies || {};
+    window.__globalDistincts     = kripkeData.globalDistincts || [];
+    window.__worldDeclarations   = parseDeclarations(inputText);
 
     console.log('worlds:', kripkeData.worlds);
     console.log('localWorld:', kripkeData.localWorld);
     console.log('accessibilityEdges:', kripkeData.accessibilityEdges);
-    console.log('inWorldMap:', kripkeData.inWorldMap);
+    console.log('domainBodies:', kripkeData.domainBodies);
+    console.log('mappingBodies:', kripkeData.mappingBodies);
+    console.log('globalDistincts:', kripkeData.globalDistincts);
 
     // ── Build world adjacency ─────────────────────────────────────────────────
     let worldAdj = kripkeData.accessibilityEdges;
@@ -504,7 +514,7 @@ function renderGraphFromInput(inputText) {
     }
 
     waitForSvgNodes(() => {
-        wireDelegatedClicks(window.__inWorldMap);
+        wireDelegatedClicks(window.__inWorldMap, window.__domainBodies, window.__mappingBodies, window.__globalDistincts);
         wireHoverEffects(worldAdj);
 
         const spinner = document.getElementById('loadingSymbol');
@@ -637,39 +647,15 @@ function splitTopLevelClauses(s) {
 
 
 function parseDeclarations(rawInput) {
-    var lines = rawInput.split(".");
-    var out = [];
-    let started = false;
-
-    const TYPE_LINE_RE = /^\s*tff\([^)]*,\s*type\s*,/i;
-
-    for (let rawLn of lines) {
-        
-        let ln = rawLn + ".";
-
-        let cleanLn = ln.replace(/%.*/g, "").trim();
-
-        if (cleanLn === "." || cleanLn === "") {
-            if (started) {
-                out.push(ln);
-            }
-            continue;
-        }
-
-        if (TYPE_LINE_RE.test(cleanLn)) {
-            started = true;
-            out.push(ln);
-            continue;
-        }
-
-        if (!started) {
-            continue;
-        }
-
-        break;
-    }
-
-    return out.join("\n");
+    // Collect every tff statement whose role is "type" or "type-interpretation".
+    // Scanning the entire file (no early break) handles files where type-interpretation
+    // declarations are interleaved with or follow pure "type" declarations (e.g. leo_ex.s).
+    const DECL_RE = /^\s*tff\s*\([^,]+,\s*type(-interpretation)?\s*,/i;
+    return rawInput
+        .split(".")
+        .filter(chunk => DECL_RE.test(chunk.replace(/%.*/gm, "")))
+        .map(chunk => chunk.trim() + ".")
+        .join("\n");
 }
 
 /*
@@ -723,16 +709,17 @@ function parseInWorldBlocks(text) {
     .replace(/&#39;/g, "'");
 
   const worldSet = new Set();
-  
-  const worldDeclRe = /tff\([^,]+,\s*type\s*,\s*([A-Za-z0-9_]+)\s*:\s*\$world\s*\)\s*\./gim;
+
+  // Match world declarations for both "type" and "type-interpretation" roles.
+  const worldDeclRe = /tff\([^,]+,\s*type(-interpretation)?\s*,\s*([A-Za-z0-9_]+)\s*:\s*\$world\s*\)\s*\./gim;
   let m;
   while ((m = worldDeclRe.exec(cleanText)) !== null) {
-    worldSet.add(m[1]);
+    worldSet.add(m[2]); // group 2 is the world name (group 1 is the optional "-interpretation")
   }
   const worlds = Array.from(worldSet);
 
   const dict = {};
-  for (const w of worlds) dict[w] = "";
+  for (const w of worlds) dict[w] = [];
 
   const target = "$in_world";
   let idx = cleanText.indexOf(target);
@@ -777,16 +764,19 @@ function parseInWorldBlocks(text) {
 
           if (!isNegated) {
              if (worldSet.has(firstArg)) {
-               // Case 1: world name
-               dict[firstArg] = (dict[firstArg] ? dict[firstArg] + "\n" : "") + body;
+               // Named world — push body to that world's array.
+               if (!Array.isArray(dict[firstArg])) dict[firstArg] = [];
+               dict[firstArg].push(body);
              } else {
-               // case 2: ( [W : $world] : $in_world(W, ...))
+               // Universally quantified variable → push body to all worlds.
                if (worlds.length > 0) {
                  for (const w of worlds) {
-                   dict[w] = (dict[w] ? dict[w] + "\n" : "") + body;
+                   if (!Array.isArray(dict[w])) dict[w] = [];
+                   dict[w].push(body);
                  }
                } else {
-                  dict.__unresolved = (dict.__unresolved ? dict.__unresolved + "\n" : "") + body;
+                 if (!Array.isArray(dict.__unresolved)) dict.__unresolved = [];
+                 dict.__unresolved.push(body);
                }
              }
           }
@@ -799,6 +789,136 @@ function parseInWorldBlocks(text) {
   }
 
   return dict;
+}
+
+
+// Regex-fallback counterpart to KripkeFormatter's role-aware scanning.
+// Re-uses the already-built inWorldMap but re-runs $in_world scanning per
+// tff block so we know which bodies came from interpretation-domains vs
+// interpretation-mappings.  Also extracts top-level $distinct from domains.
+function parseInWorldBlocksByRole(rawText, inWorldMap) {
+  const domainBodies  = {};
+  const mappingBodies = {};
+  const globalDistincts = [];
+
+  // Populate empty arrays for every known world.
+  for (const w of Object.keys(inWorldMap)) {
+    domainBodies[w]  = [];
+    mappingBodies[w] = [];
+  }
+
+  // Collect known world names.
+  const worldSet = new Set(Object.keys(inWorldMap));
+
+  // Helper: extract all $in_world bodies from a formula fragment,
+  // pushing each body into the appropriate per-world array.
+  function scanInto(fragment, target) {
+    const pred = '$in_world';
+    let i = fragment.indexOf(pred);
+    while (i !== -1) {
+      if (i === 0 || fragment[i - 1] !== '~') {
+        let cur = i + pred.length;
+        while (cur < fragment.length && fragment[cur] !== '(') cur++;
+        if (cur < fragment.length) {
+          cur++;
+          // first arg = world identifier
+          let argStart = cur;
+          let depth = 0;
+          while (cur < fragment.length) {
+            const ch = fragment[cur];
+            if (ch === '(') depth++;
+            else if (ch === ')') { if (depth === 0) break; depth--; }
+            else if (ch === ',' && depth === 0) break;
+            cur++;
+          }
+          const worldArg = fragment.slice(argStart, cur).trim();
+          if (cur < fragment.length && fragment[cur] === ',') {
+            cur++;
+            const bodyStart = cur;
+            let d = 1;
+            while (cur < fragment.length && d > 0) {
+              if (fragment[cur] === '(') d++;
+              else if (fragment[cur] === ')') d--;
+              cur++;
+            }
+            const body = fragment.slice(bodyStart, cur - 1).trim();
+            const targets = worldSet.has(worldArg)
+              ? [worldArg]
+              : Array.from(worldSet);
+            for (const w of targets) {
+              if (!target[w]) target[w] = [];
+              target[w].push(body);
+            }
+          }
+        }
+      }
+      i = fragment.indexOf(pred, i + pred.length);
+    }
+  }
+
+  // Helper: extract all $distinct(...) calls from a fragment.
+  function scanDistinct(fragment) {
+    const pred = '$distinct';
+    let i = fragment.indexOf(pred);
+    while (i !== -1) {
+      if (i === 0 || fragment[i - 1] !== '~') {
+        let cur = i + pred.length;
+        while (cur < fragment.length && fragment[cur] !== '(') cur++;
+        if (cur < fragment.length) {
+          cur++;
+          let depth = 1, start = cur;
+          while (cur < fragment.length && depth > 0) {
+            if (fragment[cur] === '(') depth++;
+            else if (fragment[cur] === ')') depth--;
+            cur++;
+          }
+          globalDistincts.push(`$distinct(${fragment.slice(start, cur - 1)})`);
+        }
+      }
+      i = fragment.indexOf(pred, i + pred.length);
+    }
+  }
+
+  // Walk each tff block and route by role.
+  // Split on the tff( keyword while tracking depth so nested parens don't confuse us.
+  const clean = rawText.replace(/%.*/gm, '');  // strip comments
+  let pos = 0;
+  while (pos < clean.length) {
+    const tffIdx = clean.indexOf('tff(', pos);
+    if (tffIdx === -1) break;
+
+    let cur = tffIdx + 4;  // past 'tff('
+    let depth = 1, commaCount = 0;
+    let roleStart = -1, formulaStart = -1;
+
+    while (cur < clean.length && depth > 0) {
+      const ch = clean[cur];
+      if (ch === '(') depth++;
+      else if (ch === ')') { depth--; if (depth === 0) break; }
+      else if (ch === ',' && depth === 1) {
+        commaCount++;
+        if (commaCount === 1) roleStart = cur + 1;
+        else if (commaCount === 2) formulaStart = cur + 1;
+      }
+      cur++;
+    }
+
+    if (roleStart !== -1 && formulaStart !== -1) {
+      const role    = clean.slice(roleStart, formulaStart - 1).trim();
+      const formula = clean.slice(formulaStart, cur).trim();
+
+      if (role === 'interpretation-domains') {
+        scanInto(formula, domainBodies);
+        scanDistinct(formula);
+      } else if (role === 'interpretation-mappings') {
+        scanInto(formula, mappingBodies);
+      }
+    }
+
+    pos = cur + 1;
+  }
+
+  return { domainBodies, mappingBodies, globalDistincts };
 }
 
 
@@ -1226,47 +1346,72 @@ function removeUnwantedWorldDelcarations(text){
   return filteredLines.join('.');
 }// removeUnwantedWorldDelcarations
 
-function wireDelegatedClicks(inWorldMap) {
+function wireDelegatedClicks(inWorldMap, domainBodies, mappingBodies, globalDistincts) {
   const svg = getSvgContainer();
- 
-  if (!svg){console.log("failed to get svg,"); return;}
 
-  // avoid duplicate listeners
-  if (svg.__worldClickBound) return;
- 
-  svg.__worldClickBound = true;
+  if (!svg) { console.log("failed to get svg"); return; }
 
+  // Remove any previously bound click handler so stale closures don't fire
+  // when a new file is loaded (the #graph container persists across renders).
+  if (svg.__worldClickHandler) {
+    svg.removeEventListener("click", svg.__worldClickHandler, false);
+    svg.__worldClickHandler = null;
+  }
 
-
-  svg.addEventListener("click", (e) => {
-    // find nearest node group
+  const clickHandler = (e) => {
     const g = e.target.closest && e.target.closest("g.node");
     if (!g) return;
 
-    // prefer id but fallback to <title> or visible text
     const key = g.getAttribute("id")
              || g.querySelector("title")?.textContent?.trim()
              || g.querySelector("text")?.textContent?.trim();
-
     if (!key) return;
 
-    const rawWorld  = inWorldMap[key] || "";
-    console.log('-------------------------------------')
-    console.log("Raw world is : ");
-    console.log(rawWorld);
-    console.log('-------------------------------------')
-    const final = wrapInTPTP(rawWorld, key );
-    converted =   `${removeUnwantedWorldDelcarations(window.__worldDeclarations)} ` + world_to_IIV_format(rawWorld)
-    
-    converted = converted + final;
-    console.log('-------------------------------------')
-    console.log("Converted is : ");
-    console.log(converted);
-    console.log('-------------------------------------')
-    // RAW WORLD FIX 
+    // ── Collect domain and mapping bodies for this world ─────────────────────
+    const dBodies = Array.isArray((domainBodies  || {})[key]) ? domainBodies[key]  : [];
+    const mBodies = Array.isArray((mappingBodies || {})[key]) ? mappingBodies[key] : [];
+    const allBodies = Array.isArray((inWorldMap  || {})[key]) ? inWorldMap[key]    : [];
 
-    openIIVInNewTab_viaForm(converted);
-  }, false);
+    console.log(`World "${key}": ${dBodies.length} domain bodies, ${mBodies.length} mapping bodies`);
+
+    if (!allBodies.length) {
+      console.warn(`No interpretation data for world "${key}" — nothing to send.`);
+      return;
+    }
+
+    // ── Type declarations (type + type-interpretation, $world lines removed) ──
+    const decls = removeUnwantedWorldDelcarations(window.__worldDeclarations || "").trim();
+
+    // ── Build the TSTP submission ──────────────────────────────────────────────
+    // Use separate interpretation-domains and interpretation-mappings tff()
+    // statements (the canonical TPTP format for TFF with type promoters).
+    // $distinct predicates from the original domains block go into the domains stmt.
+    const distincts = Array.isArray(globalDistincts) ? globalDistincts : [];
+
+    let tptpOut = decls + '\n';
+
+    if (dBodies.length > 0 || distincts.length > 0) {
+      const domainParts = [...distincts, ...dBodies];
+      tptpOut += `\ntff(${key}_domains,interpretation-domains,\n    ( ${domainParts.join('\n    & ')}\n    )\n).\n`;
+    }
+
+    if (mBodies.length > 0) {
+      tptpOut += `\ntff(${key}_mappings,interpretation-mappings,\n    ( ${mBodies.join('\n    & ')}\n    )\n).\n`;
+    }
+
+    // Fallback: if we couldn't split by role, emit a single interpretation block.
+    if (dBodies.length === 0 && mBodies.length === 0 && allBodies.length > 0) {
+      console.warn('Role-split unavailable — emitting combined interpretation block.');
+      const domainParts = [...distincts, ...allBodies];
+      tptpOut += `\ntff(${key},interpretation,\n    ( ${domainParts.join('\n    & ')}\n    )\n).\n`;
+    }
+
+    console.log('TSTP submission:\n', tptpOut);
+    openIIVInNewTab_viaForm(tptpOut);
+  };
+
+  svg.addEventListener("click", clickHandler, false);
+  svg.__worldClickHandler = clickHandler;
 
 }// end of wireDelegatedClicks
 

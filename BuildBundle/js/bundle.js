@@ -42822,6 +42822,9 @@ var Bundle = (() => {
 
   // parserIKV.js
   window.antlr4 = antlr4_exports;
+  window.TPTPLexer = TPTPLexer2;
+  window.TPTPParser = TPTPParser2;
+  window.TPTPListener = TPTPListener;
   var body = document.body;
   var preconnect1 = document.createElement("link");
   preconnect1.rel = "preconnect";
@@ -43207,8 +43210,184 @@ var Bundle = (() => {
     }
     return nm;
   };
+  var KripkeFormatter = class extends TPTPListener {
+    // originalText: the raw TPTP source string, used to extract formula bodies
+    // with original whitespace intact.  getText() strips whitespace, which
+    // breaks IIV's TPTP parser on typed quantifiers like ! [P : person] :.
+    constructor(originalText = "") {
+      super();
+      this.originalText = originalText;
+      this.worlds = /* @__PURE__ */ new Set();
+      this.accessibilityEdges = {};
+      this.localWorld = null;
+      this.domainBodies = {};
+      this.mappingBodies = {};
+      this.inWorldMap = {};
+      this.globalDistincts = [];
+    }
+    enterTff_annotated(ctx) {
+      const role = ctx.formula_role().getText();
+      const fmlCompact = ctx.tff_formula().getText();
+      const fmlCtx = ctx.tff_formula();
+      const fmlOrig = this.originalText && fmlCtx.start && fmlCtx.stop ? this.originalText.slice(fmlCtx.start.start, fmlCtx.stop.stop + 1) : fmlCompact;
+      if (role === "type" || role === "type-interpretation") {
+        const m2 = fmlCompact.match(/^([A-Za-z0-9_]+):\$world$/);
+        if (m2) {
+          const w2 = m2[1];
+          this.worlds.add(w2);
+          for (const map of [this.inWorldMap, this.domainBodies, this.mappingBodies]) {
+            if (!(w2 in map)) map[w2] = [];
+          }
+          if (!(w2 in this.accessibilityEdges)) this.accessibilityEdges[w2] = [];
+          return;
+        }
+      }
+      if (role.includes("interpretation") && !role.startsWith("type")) {
+        this._processFormula(fmlOrig, role);
+      }
+    }
+    _processFormula(text, role) {
+      const lm = text.match(/\$local_world\s*=\s*([A-Za-z0-9_]+)/);
+      if (lm && !this.localWorld) this.localWorld = lm[1];
+      this._scanAccessibleWorld(text);
+      this._scanInWorld(text, role);
+      if (role === "interpretation-domains") {
+        this._scanDistinct(text);
+      }
+    }
+    // Returns true if the character before position idx (skipping whitespace)
+    // is '~', meaning the predicate at idx is negated.
+    _isNegated(text, idx) {
+      let back = idx - 1;
+      while (back >= 0 && /\s/.test(text[back])) back--;
+      return back >= 0 && text[back] === "~";
+    }
+    _scanAccessibleWorld(text) {
+      const pred = "$accessible_world";
+      let idx = text.indexOf(pred);
+      while (idx !== -1) {
+        if (!this._isNegated(text, idx)) {
+          let cur = idx + pred.length;
+          while (cur < text.length && text[cur] !== "(") cur++;
+          if (cur < text.length) {
+            cur++;
+            const [from, sepPos] = this._nextArg(text, cur);
+            if (from !== null && sepPos < text.length && text[sepPos] === ",") {
+              const [to] = this._nextArg(text, sepPos + 1);
+              const fromT = from.trim(), toT = (to || "").trim();
+              if (fromT && toT) {
+                if (!this.accessibilityEdges[fromT]) this.accessibilityEdges[fromT] = [];
+                if (!this.accessibilityEdges[fromT].includes(toT))
+                  this.accessibilityEdges[fromT].push(toT);
+              }
+            }
+          }
+        }
+        idx = text.indexOf(pred, idx + pred.length);
+      }
+    }
+    _scanDistinct(text) {
+      const pred = "$distinct";
+      let idx = text.indexOf(pred);
+      while (idx !== -1) {
+        if (!this._isNegated(text, idx)) {
+          let cur = idx + pred.length;
+          while (cur < text.length && text[cur] !== "(") cur++;
+          if (cur < text.length) {
+            cur++;
+            let depth = 1, start = cur;
+            while (cur < text.length && depth > 0) {
+              if (text[cur] === "(") depth++;
+              else if (text[cur] === ")") depth--;
+              cur++;
+            }
+            const args = text.slice(start, cur - 1).replace(/\s+/g, "");
+            this.globalDistincts.push(`$distinct(${args})`);
+          }
+        }
+        idx = text.indexOf(pred, idx + pred.length);
+      }
+    }
+    _scanInWorld(text, role) {
+      const isDomain = role === "interpretation-domains";
+      const isMapping = role === "interpretation-mappings";
+      const pred = "$in_world";
+      let idx = text.indexOf(pred);
+      while (idx !== -1) {
+        if (!this._isNegated(text, idx)) {
+          let cur = idx + pred.length;
+          while (cur < text.length && text[cur] !== "(") cur++;
+          if (cur < text.length) {
+            cur++;
+            const [worldArg, sepPos] = this._nextArg(text, cur);
+            const wTrimmed = worldArg ? worldArg.trim() : null;
+            if (wTrimmed !== null && sepPos < text.length && text[sepPos] === ",") {
+              const bodyStart = sepPos + 1;
+              let depth = 1, bodyEnd = bodyStart;
+              while (bodyEnd < text.length && depth > 0) {
+                if (text[bodyEnd] === "(") depth++;
+                else if (text[bodyEnd] === ")") depth--;
+                bodyEnd++;
+              }
+              const body2 = text.slice(bodyStart, bodyEnd - 1).trim();
+              const targets = this.worlds.has(wTrimmed) ? [wTrimmed] : Array.from(this.worlds);
+              for (const w2 of targets) {
+                if (!this.inWorldMap[w2]) this.inWorldMap[w2] = [];
+                if (!this.domainBodies[w2]) this.domainBodies[w2] = [];
+                if (!this.mappingBodies[w2]) this.mappingBodies[w2] = [];
+                this.inWorldMap[w2].push(body2);
+                if (isDomain) this.domainBodies[w2].push(body2);
+                else if (isMapping) this.mappingBodies[w2].push(body2);
+              }
+            }
+          }
+        }
+        idx = text.indexOf(pred, idx + pred.length);
+      }
+    }
+    // Scan forward from `start` stopping at a top-level ',' or ')'.
+    // Returns [argText, endPosition].
+    _nextArg(text, start) {
+      let i2 = start, depth = 0;
+      while (i2 < text.length) {
+        const ch = text[i2];
+        if (ch === "(") depth++;
+        else if (ch === ")") {
+          if (depth === 0) return [text.slice(start, i2), i2];
+          depth--;
+        } else if (ch === "," && depth === 0) return [text.slice(start, i2), i2];
+        i2++;
+      }
+      return [text.slice(start), i2];
+    }
+  };
+  function parseKripke(text) {
+    const chars = new Qn2.InputStream(text);
+    const lexer = new TPTPLexer2(chars);
+    const tokens = new Qn2.CommonTokenStream(lexer);
+    const parser = new TPTPParser2(tokens);
+    parser.buildParseTrees = true;
+    const formatter = new KripkeFormatter(text);
+    let tree;
+    console.log("Beginning Kripke parsing\u2026");
+    while (tree = parser.tptp_input()) {
+      if (tree.getText() === "<EOF>") break;
+      Qn2.tree.ParseTreeWalker.DEFAULT.walk(formatter, tree);
+    }
+    console.log("Finished Kripke parsing!");
+    return {
+      worlds: Array.from(formatter.worlds),
+      accessibilityEdges: formatter.accessibilityEdges,
+      localWorld: formatter.localWorld,
+      inWorldMap: formatter.inWorldMap,
+      domainBodies: formatter.domainBodies,
+      mappingBodies: formatter.mappingBodies,
+      globalDistincts: formatter.globalDistincts
+    };
+  }
+  window.parseKripke = parseKripke;
 
-  // helperIKV.js
+  // helpersIKV.js
   function choose(choices) {
     var index = Math.floor(Math.random() * choices.length);
     return choices[index];
