@@ -459,6 +459,8 @@ window.interestScalingBool = false;
 
 function renderGraphFromInput(inputText) {
     window.og_text = inputText;
+    const spinner = document.getElementById('loadingSymbol');
+    if (spinner) spinner.classList.remove('hidden');
     console.log("Processing input text...");
 
     // ── Parse Kripke structure ────────────────────────────────────────────────
@@ -557,7 +559,7 @@ if (window.interpretation) {
 document.querySelector("#visualizeBtn")?.addEventListener("click", function () {
     const outPre = document.getElementById("output");
     const text = outPre ? outPre.textContent.trim() : "";
-    if (text.length > 0) renderGraphFromInput(text);
+    if (text.length > 0) setTimeout(() => renderGraphFromInput(text), 0);
 });
 
 function visualize() {
@@ -571,6 +573,9 @@ function visualize() {
   if (indexEl) indexEl.style.display = "none";
   if (idvEl)   idvEl.style.display = "flex";
   if (proofEl && outEl) proofEl.textContent = outEl.textContent;
+
+  const spinner = document.getElementById('loadingSymbol');
+  if (spinner) spinner.classList.remove('hidden');
 }// end of visualize
 
 const TYPE_LINE_RE = /^\s*tff\([^)]*,\s*type\s*,/i;
