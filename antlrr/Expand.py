@@ -190,6 +190,100 @@ class TPTPModalExtractorVisitor(TPTPVisitor):
         self.visitChildren(ctx)
 
 
+class TPTPInWorldExpanderVisitor(TPTPVisitor):
+    """
+    Detects ! [W: $world] : $in_world(W, BODY) at the top level of an
+    interpretation-domains or interpretation-mappings block and records
+    the world variable name and original-source body text.
+
+    Only the outermost universal world quantifier triggers expansion —
+    inner FOL quantifiers (! [C: child], etc.) inside BODY are left
+    untouched because visitTff_defined_plain captures BODY as raw text
+    without descending into it.
+    """
+
+    def __init__(self, source_text: str):
+        self._source: str = source_text
+        self.world_var: Optional[str] = None
+        self.body_text: Optional[str] = None
+        self._in_target_block: bool = False
+        self._found_outer_quantifier: bool = False
+
+    def _parse_variable_list(self, var_list_ctx) -> Dict[str, Optional[str]]:
+        bindings: Dict[str, Optional[str]] = {}
+        current = var_list_ctx
+        while current is not None:
+            var_ctx = (current.tff_variable()
+                       if hasattr(current, 'tff_variable') else None)
+            if var_ctx:
+                typed = (var_ctx.tff_typed_variable()
+                         if hasattr(var_ctx, 'tff_typed_variable') else None)
+                if typed and typed.variable() and typed.tff_atomic_type():
+                    bindings[typed.variable().getText()] = typed.tff_atomic_type().getText()
+                elif var_ctx.variable():
+                    bindings[var_ctx.variable().getText()] = None
+            current = (current.tff_variable_list()
+                       if hasattr(current, 'tff_variable_list') else None)
+        return bindings
+
+    def visitTff_annotated(self, ctx: TPTPParser.Tff_annotatedContext):
+        role = ctx.formula_role().getText() if ctx.formula_role() else None
+        if role in ('interpretation-domains', 'interpretation-mappings'):
+            self._in_target_block = True
+            self.visitChildren(ctx)
+            self._in_target_block = False
+
+    def visitTff_quantified_formula(self, ctx: TPTPParser.Tff_quantified_formulaContext):
+        if not self._in_target_block:
+            return
+        if self._found_outer_quantifier:
+            # Inner quantifier inside BODY — do not recurse; leave it as-is.
+            return
+
+        q_text = ctx.tff_quantifier().getText() if ctx.tff_quantifier() else None
+        if q_text != '!':
+            return
+
+        var_list = ctx.tff_variable_list()
+        bindings = self._parse_variable_list(var_list) if var_list else {}
+        world_vars = [name for name, typ in bindings.items() if typ == '$world']
+        if len(world_vars) != 1:
+            return
+
+        self._found_outer_quantifier = True
+        self.world_var = world_vars[0]
+        self.visitChildren(ctx)
+
+    def visitTff_defined_plain(self, ctx: TPTPParser.Tff_defined_plainContext):
+        if not self._found_outer_quantifier or self.body_text is not None:
+            return
+        if not ctx.defined_functor():
+            return
+
+        func_name = ctx.defined_functor().getText()
+        if func_name != '$in_world' or not ctx.tff_arguments():
+            return
+
+        args = ctx.tff_arguments()
+        first_term = args.tff_term()
+        if first_term is None or first_term.getText() != self.world_var:
+            return
+
+        comma_terms = args.comma_tff_term()
+        if not comma_terms:
+            return
+        ct = comma_terms[0] if isinstance(comma_terms, list) else comma_terms
+        body_ctx = ct.tff_term()
+        if body_ctx is None:
+            return
+
+        # WS is skipped by the lexer, but token.start / token.stop are character
+        # offsets into the original InputStream — slicing the source preserves
+        # all whitespace and internal indentation verbatim.
+        self.body_text = self._source[body_ctx.start.start: body_ctx.stop.stop + 1]
+        # Do NOT call visitChildren — BODY is fully captured as source text.
+
+
 # --------------------------------------------------------------------------- #
 
 class TPTPModalParserANTLR:
@@ -197,6 +291,14 @@ class TPTPModalParserANTLR:
     def __init__(self):
         self.block_regex = re.compile(
             r"tff\(([^,]+)\s*,\s*interpretation-worlds\s*,\s*(.*?)\)\s*\.\s*$",
+            re.MULTILINE | re.DOTALL
+        )
+        self.domains_regex = re.compile(
+            r"tff\(([^,]+)\s*,\s*interpretation-domains\s*,\s*(.*?)\)\s*\.\s*$",
+            re.MULTILINE | re.DOTALL
+        )
+        self.mappings_regex = re.compile(
+            r"tff\(([^,]+)\s*,\s*interpretation-mappings\s*,\s*(.*?)\)\s*\.\s*$",
             re.MULTILINE | re.DOTALL
         )
 
@@ -216,6 +318,23 @@ class TPTPModalParserANTLR:
         extractor.visit(tree)
         return extractor
 
+    def _run_inworld_expander(self, block_text: str) -> TPTPInWorldExpanderVisitor:
+        input_stream = InputStream(block_text)
+        lexer = TPTPLexer(input_stream)
+        stream = CommonTokenStream(lexer)
+        parser = TPTPParser(stream)
+        tree = parser.tptp_file()
+        expander = TPTPInWorldExpanderVisitor(block_text)
+        expander.visit(tree)
+        return expander
+
+    def _build_inworld_block(
+        self, block_name: str, block_role: str, body_text: str, worlds: List[str]
+    ) -> str:
+        parts = [f"$in_world({w},\n        {body_text})" for w in worlds]
+        joined = "\n    & ".join(parts)
+        return f"tff({block_name},{block_role},\n    ( {joined} ) )."
+
     def get_expanded_file_content(self, filepath: str) -> Optional[str]:
         with open(filepath, 'r', encoding='utf-8') as f:
             raw_text = f.read()
@@ -225,8 +344,24 @@ class TPTPModalParserANTLR:
             return raw_text
 
         extractor = self.run_extractor(raw_text)
+        worlds = sorted(extractor.worlds)
         new_expanded_block = self.build_interpretation_block(extractor)
-        return self.block_regex.sub(new_expanded_block, raw_text, count=1)
+        result = self.block_regex.sub(new_expanded_block, raw_text, count=1)
+
+        for role_regex, role_name in (
+            (self.domains_regex, 'interpretation-domains'),
+            (self.mappings_regex, 'interpretation-mappings'),
+        ):
+            def replacer(m, role_name=role_name, worlds=worlds):
+                block_text = m.group(0)
+                block_name = m.group(1).strip()
+                expander = self._run_inworld_expander(block_text)
+                if expander.world_var is None or expander.body_text is None:
+                    return block_text
+                return self._build_inworld_block(block_name, role_name, expander.body_text, worlds)
+            result = role_regex.sub(replacer, result, count=1)
+
+        return result
 
     def build_interpretation_block(self, extractor: TPTPModalExtractorVisitor) -> str:
         block_name = extractor.interpretation_worlds_name
