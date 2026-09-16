@@ -661,8 +661,71 @@ class KripkeFormatter extends Listener {
 		this._scanAccessibleWorld(text);
 		this._scanInWorld(text, role);
 
+		if (role === 'interpretation-domains' || role === 'interpretation-mappings') {
+			// A conjunct written as a bare "! [W: $world] : ( ... )" — i.e. NOT
+			// wrapped in $in_world(...) — is world-invariant content (e.g. shared
+			// identity facts). _scanInWorld only ever looks for the literal
+			// "$in_world" predicate, so this shape was previously silently
+			// dropped from every world's domain/mapping bodies.
+			this._scanBareWorldUniversal(text, role);
+		}
+
 		if (role === 'interpretation-domains') {
 			this._scanDistinct(text);
+		}
+	}
+
+	_scanBareWorldUniversal(text, role) {
+		const isDomain  = role === 'interpretation-domains';
+		const isMapping = role === 'interpretation-mappings';
+
+		let idx = 0;
+		while ((idx = text.indexOf('!', idx)) !== -1) {
+			let cur = idx + 1;
+			while (cur < text.length && /\s/.test(text[cur])) cur++;
+			if (text[cur] !== '[') { idx = idx + 1; continue; }
+
+			let depth = 1, listStart = cur + 1;
+			cur++;
+			while (cur < text.length && depth > 0) {
+				if      (text[cur] === '[') depth++;
+				else if (text[cur] === ']') depth--;
+				cur++;
+			}
+			if (depth !== 0) break;
+			const varList = text.slice(listStart, cur - 1);
+
+			// Must be exactly one binding, of sort $world.
+			const m = /^\s*([A-Za-z0-9_]+)\s*:\s*\$world\s*$/.exec(varList);
+			if (!m) { idx = cur; continue; }
+
+			while (cur < text.length && /\s/.test(text[cur])) cur++;
+			if (text[cur] !== ':') { idx = cur; continue; }
+			cur++;
+			while (cur < text.length && /\s/.test(text[cur])) cur++;
+			if (text[cur] !== '(') { idx = cur; continue; } // e.g. $in_world(W,...) — already handled by _scanInWorld
+
+			const bodyStart = cur + 1;
+			let d = 1;
+			cur++;
+			while (cur < text.length && d > 0) {
+				if      (text[cur] === '(') d++;
+				else if (text[cur] === ')') d--;
+				cur++;
+			}
+			const body = text.slice(bodyStart, cur - 1).trim();
+
+			for (const w of this.worlds) {
+				if (!this.inWorldMap[w])    this.inWorldMap[w]    = [];
+				if (!this.domainBodies[w])  this.domainBodies[w]  = [];
+				if (!this.mappingBodies[w]) this.mappingBodies[w] = [];
+
+				this.inWorldMap[w].push(body);
+				if (isDomain)       this.domainBodies[w].push(body);
+				else if (isMapping) this.mappingBodies[w].push(body);
+			}
+
+			idx = cur;
 		}
 	}
 
