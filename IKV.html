@@ -443,13 +443,12 @@ PROOF_GOES_HERE
 
       <p id="proofText" style="display: none"></p>
 
-<!-- Local bundle (rebuild with: cd BuildBundle/js && make build_bundle) --
-  --<script type="text/javascript" src="BuildBundle/js/bundle.js"></script> --
+<!-- Local bundle (rebuild with: cd BuildBundle/js && make build_bundle) -->
+<script type="text/javascript" src="BuildBundle/js/IKVbundle.js"></script>
 
-Remote bundle (uncomment for production deployment):
-  ---->
-
+<!-- Remote bundle (swap back in for production deployment):
 <script type="text/javascript" src="https://tptp.org/CGIFormData/IKVbundle.js"></script>
+-->
 
 
 <script type="text/javascript">
@@ -704,8 +703,114 @@ function parseDeclarations(rawInput)
   return out.join("\n");
 
 }// end of parseDeclarations
-old 
+old
 */
+
+// ── Quantifier-aware text helpers ────────────────────────────────────────────
+// Used by scanBareWorldUniversals() (see parseInWorldBlocksByRole below) to
+// recognize a bare "! [W: $world] : ( ... )" conjunct. NOTE: domain-sort
+// quantifiers (! [DO: d_person] : ...) inside interpretation-domains/mappings
+// are intentionally sent to TSTP *unexpanded* — the "IIV" SystemOnTPTP backend
+// expects them in this original quantified form (confirmed against a working
+// reference submission), not grounded into ground AND/OR instances.
+
+// Split `text` on top-level occurrences of a single-char separator, respecting
+// nested ()/[] so we don't split inside a sub-formula or variable list.
+function splitTopLevelIKV(text, sep) {
+  const parts = [];
+  let depth = 0, start = 0;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '(' || ch === '[') depth++;
+    else if (ch === ')' || ch === ']') depth--;
+    else if (ch === sep && depth === 0) {
+      parts.push(text.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(text.slice(start));
+  return parts.map(s => s.trim()).filter(Boolean);
+}
+
+// Strip redundant enclosing parens, e.g. "( ( X ) )" -> "X" — only when the
+// very first "(" truly matches the very last ")" (i.e. it wraps everything).
+function unwrapParensIKV(text) {
+  let s = text.trim();
+  while (s.startsWith('(') && s.endsWith(')')) {
+    let depth = 0, wrapsAll = true;
+    for (let i = 0; i < s.length; i++) {
+      if (s[i] === '(') depth++;
+      else if (s[i] === ')') {
+        depth--;
+        if (depth === 0 && i !== s.length - 1) { wrapsAll = false; break; }
+      }
+    }
+    if (!wrapsAll) break;
+    s = s.slice(1, -1).trim();
+  }
+  return s;
+}
+
+// Parse a leading quantifier "! [V1: S1, V2: S2, ...] : ( BODY )" — the body
+// must be an immediately-following parenthesized group (the convention this
+// codebase's generated TPTP already follows everywhere). Returns null if
+// `text` doesn't start with a quantifier in that shape.
+function parseLeadingQuantifierIKV(text) {
+  const t = text.trim();
+  const head = /^([!?])\s*\[/.exec(t);
+  if (!head) return null;
+  let i = head[0].length, depth = 1;
+  const listStart = i;
+  while (i < t.length && depth > 0) {
+    if (t[i] === '[') depth++;
+    else if (t[i] === ']') depth--;
+    i++;
+  }
+  if (depth !== 0) return null;
+  const varListText = t.slice(listStart, i - 1);
+  while (i < t.length && /\s/.test(t[i])) i++;
+  if (t[i] !== ':') return null;
+  i++;
+  while (i < t.length && /\s/.test(t[i])) i++;
+
+  const bindings = varListText.split(',').map(s => {
+    const [name, sort] = s.split(':').map(x => x && x.trim());
+    return { name, sort };
+  }).filter(b => b.name);
+  if (!bindings.length) return null;
+
+  if (t[i] === '!' || t[i] === '?') {
+    // Chained quantifier with no intervening parens, e.g.
+    // "! [O: person] : ? [DO: d_person] : ( ... )" — the outer quantifier's
+    // scope is exactly the nested quantifier's own span.
+    const nested = parseLeadingQuantifierIKV(t.slice(i));
+    if (!nested) return null;
+    const consumedLen = (t.length - i) - nested.trailing.length;
+    return {
+      quant: head[1],
+      bindings,
+      body: t.slice(i, i + consumedLen),
+      trailing: nested.trailing,
+    };
+  }
+
+  if (t[i] !== '(') return null; // require immediate parenthesized scope
+  let d = 1;
+  const bodyStart = i + 1;
+  i++;
+  while (i < t.length && d > 0) {
+    if (t[i] === '(') d++;
+    else if (t[i] === ')') d--;
+    i++;
+  }
+  if (d !== 0) return null;
+  return {
+    quant: head[1],
+    bindings,
+    body: t.slice(bodyStart, i - 1),
+    trailing: t.slice(i),
+  };
+}
 
 function parseInWorldBlocks(text) {
   const cleanText = text
@@ -886,6 +991,24 @@ function parseInWorldBlocksByRole(rawText, inWorldMap) {
     }
   }
 
+  // Helper: broadcast a bare "! [W: $world] : ( ... )" conjunct — world-
+  // invariant content that is NOT wrapped in $in_world — to every known
+  // world. scanInto() above only ever looks for the literal "$in_world"
+  // predicate, so a bare universal like this was previously silently dropped
+  // (e.g. shared identity facts like "alex = d2p(dp_0)" in a mappings block).
+  function scanBareWorldUniversals(formula, target) {
+    for (const raw of splitTopLevelIKV(unwrapParensIKV(formula), '&')) {
+      const piece = unwrapParensIKV(raw);
+      const q = parseLeadingQuantifierIKV(piece);
+      if (q && q.trailing.trim() === '' && q.bindings.length === 1 && q.bindings[0].sort === '$world') {
+        for (const w of worldSet) {
+          if (!target[w]) target[w] = [];
+          target[w].push(q.body);
+        }
+      }
+    }
+  }
+
   // Walk each tff block and route by role.
   // Split on the tff( keyword while tracking depth so nested parens don't confuse us.
   const clean = rawText.replace(/%.*/gm, '');  // strip comments
@@ -917,8 +1040,10 @@ function parseInWorldBlocksByRole(rawText, inWorldMap) {
       if (role === 'interpretation-domains') {
         scanInto(formula, domainBodies);
         scanDistinct(formula);
+        scanBareWorldUniversals(formula, domainBodies);
       } else if (role === 'interpretation-mappings') {
         scanInto(formula, mappingBodies);
+        scanBareWorldUniversals(formula, mappingBodies);
       }
     }
 
@@ -1375,6 +1500,11 @@ function wireDelegatedClicks(inWorldMap, domainBodies, mappingBodies, globalDist
     if (!key) return;
 
     // ── Collect domain and mapping bodies for this world ─────────────────────
+    // Sent to TSTP in their original quantified form — the "IIV" SystemOnTPTP
+    // backend expects domain-sort quantifiers (! [DO: d_person] : ...) as
+    // authored, not ground-expanded (confirmed against a working reference
+    // submission), so no transformation is applied here beyond what's already
+    // been extracted per world.
     const dBodies = Array.isArray((domainBodies  || {})[key]) ? domainBodies[key]  : [];
     const mBodies = Array.isArray((mappingBodies || {})[key]) ? mappingBodies[key] : [];
     const allBodies = Array.isArray((inWorldMap  || {})[key]) ? inWorldMap[key]    : [];
